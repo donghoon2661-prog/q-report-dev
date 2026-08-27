@@ -21,8 +21,16 @@ function renderSystemTab(){
     return `00:00 KST (tomorrow) · in ${Math.floor(diffM/60)}h ${diffM%60}m`;
   }
 
-  const failList = d.shipments.filter(s=>s.scheduleError);
-  const okCount = d.shipments.filter(s=>!s.scheduleError).length;
+  /* RESULT 카운트 — scheduleCheckedAt 기준 12시간 이내면 ok, 아니면 failed */
+  const RESULT_OK_MS = 12 * 60 * 60 * 1000;
+  const failList = d.shipments.filter(s => {
+    if (!s.scheduleError) return false;
+    const at = s.scheduleCheckedAt || s.checkedAt;
+    if (!at) return true;
+    const age = Date.now() - new Date(at.replace(' ','T').replace(/Z$/,'')+'Z').getTime();
+    return age >= RESULT_OK_MS;
+  });
+  const okCount = d.shipments.length - failList.length;
 
   let html = `
   <div class="sys-card">

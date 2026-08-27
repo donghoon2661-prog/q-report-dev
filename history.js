@@ -1,6 +1,8 @@
 /* ===== history.js — HISTORY 탭 ===== */
 
-const HIST_API = "https://kossan-oqc.dhoqc.workers.dev/delayhistory";
+const HIST_API = (typeof HISTORY_API !== "undefined")
+  ? HISTORY_API
+  : ((typeof API_ROOT !== "undefined" ? API_ROOT : "") + "/delayhistory");
 let histCache = null;
 let histChartInst = null;
 

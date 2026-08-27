@@ -4,8 +4,7 @@ function renderSystemTab(){
   const el = document.getElementById('sys-content');
   if(!el) return;
   const d = CUR;
-  /* 디버그 */ console.log('[renderSystemTab] CUR shipments checkedAt:');
-  (d&&d.shipments||[]).forEach(s=>console.log(`  bkg=${s.booking} checkedAt=${s.checkedAt} scheduleCheckedAt=${s.scheduleCheckedAt} mapAt=${s.mapAt}`));
+
   if(!d || !d.shipments){ el.innerHTML = `<div class="sys-err">No data loaded yet.</div>`; return; }
 
   function nextCron(){

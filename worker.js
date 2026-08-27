@@ -1137,9 +1137,10 @@ async function collectMaps(env, forceBkg = []) {
   const MAP_FIELDS = new Set(["route","names","mapAt","idx","ratio","namedPorts"]);
   const MAP_FIELDS_SAVE = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
 
-  /* 수집 대상: etaActual 아닌 것 중 강제 대상이거나 지도 미보유/만료된 것 */
+  /* 수집 대상: etaActual 아닌 것 중 강제 대상이거나 지도 미보유/만료된 것
+     spDep(Gate In) 없는 부킹은 아직 출발 전이므로 지도 수집 제외 */
   let pending = shipments
-    .filter(s => !s.etaActual && (forceSet.size ? forceSet.has(s.booking) : (!s.route || s.mapError || !mapFresh(s))))
+    .filter(s => !s.etaActual && !!s.spDep && (forceSet.size ? forceSet.has(s.booking) : (!s.route || s.mapError || !mapFresh(s))))
     .map(s => s.booking)
     .slice(0, MAX_PER_RUN);
   if (!pending.length) return {

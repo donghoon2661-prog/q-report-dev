@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>Q-REPORT DEV 자동 테스트</title>
+<style>body{font-family:Arial;max-width:800px;margin:40px auto;padding:20px;background:#111;color:#eee}button{font-size:20px;padding:12px 20px}pre{padding:16px;background:#222;white-space:pre-wrap}.p{color:#8f8}.f{color:#f88}</style>
+<h1>Q-REPORT DEV 자동 테스트</h1><p>읽기 전용 검사입니다. 데이터 수정/삭제를 하지 않습니다.</p><button id=b>▶ 전체 테스트 실행</button><pre id=o>준비 완료</pre>
+<script>
+const DEV="https://kossan-oqc-dev.dhoqc.workers.dev",MAIN="https://kossan-oqc.dhoqc.workers.dev",FILES=["config.js","app.js","history.js","trend.js","system.js","index.html"],o=document.querySelector("#o");
+async function run(){o.textContent="";let p=0,f=0;const t=async(n,fn)=>{try{let d=await fn();o.innerHTML+=`<span class=p>[PASS] ${n}${d?" — "+d:""}</span>\n`;p++}catch(e){o.innerHTML+=`<span class=f>[FAIL] ${n} — ${e.message}</span>\n`;f++}};
+let data;await t("DEV 사이트 접속",async()=>{let r=await fetch("https://donghoon2661-prog.github.io/q-report-dev/");if(!r.ok)throw Error("HTTP "+r.status);return"HTTP "+r.status});
+await t("/data 정상 응답",async()=>{let r=await fetch(DEV+"/data");if(!r.ok)throw Error("HTTP "+r.status);data=await r.json();if(!Array.isArray(data.shipments))throw Error("shipments 배열 없음");return data.shipments.length+" shipments"});
+await t("booking 중복 없음",async()=>{let a=data.shipments.map(x=>x.booking).filter(Boolean);if(new Set(a).size!==a.length)throw Error("중복 발견");return a.length+" unique"});
+for(const ep of ["/delayhistory","/lastrun"])await t(ep+" 응답",async()=>{let r=await fetch(DEV+ep);if(!r.ok)throw Error("HTTP "+r.status);await r.json();return"JSON 정상"});
+for(const file of FILES)await t("MAIN API 혼입 없음: "+file,async()=>{let r=await fetch("https://raw.githubusercontent.com/donghoon2661-prog/q-report-dev/main/"+file);let x=await r.text();if(x.includes(MAIN))throw Error("MAIN API 발견");return"정상"});
+o.innerHTML+=`\nRESULT: ${p} PASS / ${f} FAIL\n${f?"STATUS: MAIN 반영 금지":"STATUS: DEV 기본 회귀 테스트 통과"}`}
+document.querySelector("#b").onclick=run;
+</script>

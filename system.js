@@ -73,6 +73,9 @@ function renderSystemTab(){
       const schedStatus = (s.scheduleError && !schedFresh)
         ? `<span class="sys-warn">failed</span>${schedErrLoc?` <span style="color:var(--buoy);font-size:10px" title="${(s.scheduleError||'').replace(/"/g,'&quot;')}">· ${schedErrLoc}</span>`:''}`
         : `<span class="sys-ok">ok</span>`;
+      const MAP_OK_MS = 12 * 60 * 60 * 1000;
+      const mapAge = mapAt ? (Date.now() - new Date(mapAt.replace(' ','T').replace(/Z$/,'')+'Z').getTime()) : Infinity;
+      const mapFresh = mapAge < MAP_OK_MS;
       const mapStatus = mapOk
         ? `<span style="color:var(--sail)">ok</span>`
         : (s.mapError
@@ -109,7 +112,9 @@ function renderSystemTab(){
         <div style="margin-top:4px">
           ${s.etaActual
             ? `<span style="font-size:10px;color:var(--fog)">도착 완료</span>`
-            : `<button class="sys-map-refresh" data-bkg="${s.booking}" style="font-size:10px;padding:2px 7px;border:1px solid #F2C14E;color:#F2C14E;background:none">REFRESH</button>`}
+            : (mapFresh && mapOk
+              ? ``
+              : `<button class="sys-map-refresh" data-bkg="${s.booking}" style="font-size:10px;padding:2px 7px;border:1px solid #F2C14E;color:#F2C14E;background:none">REFRESH</button>`)}
         </div>
       </span>
     </div>`; }).join('')}

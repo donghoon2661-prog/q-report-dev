@@ -1122,36 +1122,33 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
    일정 수집과 동일하게 세션 중심으로 실패분을 넘긴다.
    forceBkg: 특정 부킹번호 배열 → mapFresh 무시하고 강제 재조회 */
 async function collectMaps(env, forceBkg = []) {
-  const saved = await getSaved(env);
-  if (!saved || !saved.shipments || !saved.shipments.length)
+  /* assembled.shipments 기준 — bookings + schedule:{bkg} + map:{bkg} 조립 결과 사용
+     collectMaps()는 shipments KV를 읽지도, 쓰지도 않는다.
+     지도 수집 결과는 map:{bkg}에만 저장한다. */
+  const assembled = await assembleShipments(env);
+  const shipments = assembled.shipments;
+  if (!shipments.length)
     throw new Error("No schedule data collected yet. Run /collect first.");
 
   const budget = newBudget();
   const errors = [];
-  /* map:{bkg} 개별 KV의 route/mapAt을 saved에 병합 — 스케줄 cron이 route 없는 데이터를
-     shipments KV에 덮어써도 맵 수집 시 최신 route를 보존하기 위함 */
-  await Promise.all(saved.shipments.map(async s => {
-    try {
-      const indivRaw = await env.OQC.get('map:' + s.booking);
-      if (!indivRaw) return;
-      const indiv = JSON.parse(indivRaw);
-      if (indiv.route && (!s.route || (indiv.mapAt && (!s.mapAt || indiv.mapAt > s.mapAt)))) {
-        s.route = indiv.route;
-        s.names = indiv.names;
-        s.mapAt = indiv.mapAt;
-        s.idx = indiv.idx;
-        s.ratio = indiv.ratio;
-        delete s.mapError;
-      }
-    } catch(_) {}
-  }));
-  const byBkg = new Map(saved.shipments.map(s => [s.booking, s]));
   const forceSet = new Set(forceBkg.map(b => b.trim().toUpperCase()));
-  let pending = saved.shipments
+  const byBkg = new Map(shipments.map(s => [s.booking, s]));
+  const MAP_FIELDS = new Set(["route","names","mapAt","idx","ratio","namedPorts"]);
+  const MAP_FIELDS_SAVE = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
+
+  /* 수집 대상: etaActual 아닌 것 중 강제 대상이거나 지도 미보유/만료된 것 */
+  let pending = shipments
     .filter(s => !s.etaActual && (forceSet.size ? forceSet.has(s.booking) : (!s.route || s.mapError || !mapFresh(s))))
     .map(s => s.booking)
     .slice(0, MAX_PER_RUN);
-  if (!pending.length) return { ...saved, mapNote: "보충할 지도 없음" };
+  if (!pending.length) return {
+    mapNote: "보충할 지도 없음",
+    mapOk: shipments.filter(s => s.route).length,
+    mapErrors: [],
+    sessionsUsedMaps: 0,
+    budgetUsedMaps: 0
+  };
 
   let sessionsUsed = 0;
   for (let round = 0; round < MAX_SESSIONS && pending.length; round++) {
@@ -1167,12 +1164,20 @@ async function collectMaps(env, forceBkg = []) {
       const item = byBkg.get(bkg);
       if (!item || budget.left < 3) { stillFailing.push(bkg); continue; }
       try {
-        Object.assign(item, await fetchMap(budget, session, bkg, item.container, TRIES_PER_ITEM));
+        /* 지도 결과만 item에 반영 — 스케줄/stale 필드는 건드리지 않는다 */
+        const mapResult = await fetchMap(budget, session, bkg, item.container, TRIES_PER_ITEM);
+        for (const key of MAP_FIELDS) {
+          if (Object.prototype.hasOwnProperty.call(mapResult, key)) {
+            item[key] = mapResult[key];
+          }
+        }
         delete item.mapError;
       } catch (e) {
         stillFailing.push(bkg);
         /* 기존 route가 있으면 mapError 쓰지 않음 — ok 상태 유지 */
-        item.mapError = String(e.message || e);
+        if (!item.route) {
+          item.mapError = String(e.message || e);
+        }
         if (round === MAX_SESSIONS - 1) errors.push(String(e.message || e));
       }
       await sleep(2000);
@@ -1180,65 +1185,31 @@ async function collectMaps(env, forceBkg = []) {
     pending = stillFailing;
   }
 
-  /* Race condition 방지 — 저장 직전 최신 KV를 다시 읽어서 완전 병합
-     동시에 여러 MAP REFRESH가 실행돼도 서로의 결과를 덮어쓰지 않는다 */
-  const latestRaw = await env.OQC.get("shipments");
-  const latest = latestRaw ? JSON.parse(latestRaw) : null;
-  const base = (latest && Array.isArray(latest.shipments)) ? latest : saved;
-  const baseMap = new Map(base.shipments.map(s => [s.booking, s]));
-
-  /* 이번 수집 결과를 최신 KV 위에 병합 */
-  for (const item of saved.shipments) {
-    const cur = baseMap.get(item.booking);
-    if (!cur) { base.shipments.push(item); continue; }
-    /* 이번에 성공한 부킹은 최신 결과로 덮어씀 */
-    if (item.route) {
-      Object.assign(cur, item);
-    } else if (!cur.route && item.mapError) {
-      /* 둘 다 route 없으면 mapError만 업데이트 */
-      cur.mapError = item.mapError;
-    }
-    /* cur에 route 있고 이번 실패면 → 기존 route 유지 (건드리지 않음) */
-  }
-
-  base.mapUpdated = new Date().toISOString().slice(0, 16).replace("T", " ") + "Z";
-  base.mapOk = base.shipments.filter(s => s.route).length;
-  base.mapErrors = errors;
-  base.sessionsUsedMaps = sessionsUsed;
-  base.budgetUsedMaps = budget.used;
-
-  /* map:{bkg} — 이번 수집에서 성공/변경된 booking만 저장 */
-  const MAP_KEYS_SET = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
-  const changedMapBookings = new Set(
-    saved.shipments
-      .filter(s => forceSet.has(s.booking) || (s.route && !byBkg.get(s.booking)?.route))
-      .map(s => s.booking)
-  );
-  /* 성공한 부킹 추가 */
-  for (const item of saved.shipments) {
-    if (item.route && !item.mapError) changedMapBookings.add(item.booking);
-  }
-
+  /* map:{bkg}만 저장 — shipments KV는 절대 PUT하지 않는다 */
+  const mapWriteTargets = shipments.filter(s => !s.etaActual && (s.route || s.mapError));
   const mapWriteResults = await Promise.allSettled(
-    [...changedMapBookings].map(async bkg => {
-      const s = baseMap.get(bkg);
-      if (!s) return;
+    mapWriteTargets.map(async s => {
       const mapData = Object.fromEntries(
-        Object.entries(s).filter(([k]) => MAP_KEYS_SET.has(k) || k === "booking")
+        Object.entries(s).filter(([k]) => MAP_FIELDS_SAVE.has(k) || k === "booking")
       );
-      await env.OQC.put("map:" + bkg, JSON.stringify(mapData));
+      await env.OQC.put("map:" + s.booking, JSON.stringify(mapData));
     })
   );
   mapWriteResults.forEach((r, i) => {
+    const bkg = mapWriteTargets[i]?.booking;
     if (r.status === "rejected") {
-      const bkg = [...changedMapBookings][i];
       console.error("[collectMaps] map save failed", bkg, String(r.reason));
-      errors.push("map save " + bkg + ": " + String(r.reason && (r.reason.message || r.reason)));
+      errors.push("map save " + (bkg||"?") + ": " + String(r.reason && (r.reason.message || r.reason)));
     }
   });
 
-  await env.OQC.put("shipments", JSON.stringify(base));
-  return base;
+  return {
+    mapOk: shipments.filter(s => s.route).length,
+    mapErrors: errors,
+    sessionsUsedMaps: sessionsUsed,
+    budgetUsedMaps: budget.used,
+    mapUpdated: new Date().toISOString().slice(0, 16).replace("T", " ") + "Z"
+  };
 }
 
 /* ---------- 라우팅 ---------- */

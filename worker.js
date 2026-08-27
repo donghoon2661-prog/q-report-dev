@@ -768,8 +768,11 @@ async function notifyArrivalIfNeeded(env, payload) {
 /* ---------- 부킹 목록 ---------- */
 async function getList(env) {
   try {
-    const v = JSON.parse((await env.OQC.get("bookings")) || "null");
-    if (Array.isArray(v) && v.length) return v;
+    const raw = await env.OQC.get("bookings");
+    if (raw !== null) {
+      const v = JSON.parse(raw);
+      if (Array.isArray(v)) return v;
+    }
   } catch (_) {}
   return BOOKINGS;
 }
@@ -1621,10 +1624,12 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
           return;
         }
         const saved = await getSaved(env);
-        if (!saved || !saved.length) return;
+        if (!saved || !Array.isArray(saved.shipments) || !saved.shipments.length) return;
+
+        const shipments = saved.shipments;
 
         /* 스케줄 실패 부킹 재시도 */
-        const schedFail = saved.filter(s => s.staleItem).map(s => s.booking);
+        const schedFail = shipments.filter(s => s.staleItem).map(s => s.booking);
         if (schedFail.length) {
           try {
             const r = await collectSchedule(env, schedFail);
@@ -1634,7 +1639,7 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         }
 
         /* 지도 실패 부킹 재시도 */
-        const mapFail = saved.filter(s => !s.etaActual && (s.mapError || !s.route || !s.route.length));
+        const mapFail = shipments.filter(s => !s.etaActual && (s.mapError || !s.route || !s.route.length));
         if (mapFail.length) {
           try {
             const forceBkg = mapFail.map(s => s.booking);

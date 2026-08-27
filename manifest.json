@@ -1,0 +1,25 @@
+{
+  "name": "Kossan Export Report",
+  "short_name": "Kossan OQC",
+  "description": "HMM 선적 추적 및 OQC 관제 대시보드",
+  "start_url": "/q-report/",
+  "scope": "/q-report/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#E8000F",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

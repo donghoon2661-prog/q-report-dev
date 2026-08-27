@@ -1,5 +1,17 @@
 /* ===== map.js — 지도 · 좌표 · 위치 계산 ===== */
 
+/* ---------- 안전한 timestamp 파싱 ----------
+   v가 이미 timezone 정보를 포함하면 Z를 붙이지 않는다 */
+function safeDate(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(s);
+  const iso = hasZone ? s : s.replace(" ", "T") + "Z";
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Date(t) : null;
+}
+const safeT = v => { const d = safeDate(v); return d ? d.getTime() : null; };
+
 /* ---------- 진행바(rail) ---------- */
 function railInfo(s){
   const legs = Array.isArray(s.legs) ? s.legs : [];
@@ -14,7 +26,7 @@ function railInfo(s){
   });
   if(merged.length < 2) return null;
   const now = Date.now();
-  const T = v => v ? new Date(v+"Z").getTime() : null;
+  const T = safeT;
   const last = merged.length-1;
   let i = 0, f = 0, atPort = true;
   for(let k=0;k<merged.length;k++){
@@ -49,7 +61,7 @@ function synthRoute(s){
     merged.push(n); route.push(xy);
   }
   if(route.length<2) return false;
-  const T = v => v ? new Date(v+"Z").getTime() : null;
+  const T = safeT;
   const now = Date.now();
   let idx=0, ratio=0;
   for(let k=0;k<legs.length;k++){
@@ -108,7 +120,7 @@ function initMap(data){
       if(portSeen[key]) return; portSeen[key]=1;
       L.circleMarker(p,{radius:4,color:cssVar('--fog','#8AA4B5'),weight:1.5,
                         fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
-        .bindTooltip(s.names[k],{className:'vsl-tip',direction:'top'}).addTo(map);
+        .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
     });
   });
 

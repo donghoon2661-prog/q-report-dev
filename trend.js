@@ -1,6 +1,8 @@
 /* ===== trend.js — BETA 탭 (Admin only) ===== */
 
-const TREND_API = "https://kossan-oqc.dhoqc.workers.dev/delayhistory";
+const TREND_API = (typeof HISTORY_API !== "undefined")
+  ? HISTORY_API
+  : ((typeof API_ROOT !== "undefined" ? API_ROOT : "") + "/delayhistory");
 let trendCache = null;
 let betaMenu = 'trend';
 

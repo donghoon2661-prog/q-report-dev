@@ -242,7 +242,7 @@ async function renderErrorLogContent() {
     </div>`;
 
   try {
-    const API_BASE = typeof API !== 'undefined' ? API.replace('/data','') : 'https://kossan-oqc.dhoqc.workers.dev';
+    const API_BASE = typeof API_ROOT !== 'undefined' ? API_ROOT : (typeof API !== 'undefined' ? API.replace('/data','') : '');
     const key = typeof getKey === 'function' ? await getKey() : null;
     const headers = key ? {'X-Refresh-Key': key} : {};
     const r = await fetch(API_BASE + '/debug', {cache:'no-store', headers});
@@ -343,7 +343,7 @@ async function renderRouteTable() {
   if (!el) return;
 
   try {
-    const r = await fetch(typeof source === 'function' ? source() : 'https://kossan-oqc.dhoqc.workers.dev/data', {cache:'no-store'});
+    const r = await fetch(typeof source === 'function' ? source() : (typeof API !== 'undefined' ? API : ''), {cache:'no-store'});
     const d = await r.json();
     const ships = (d.shipments || []).filter(s => !s.etaActual);
 

@@ -1,0 +1,38 @@
+{
+  "version": "v10.8",
+  "sheets": [
+    {
+      "file": "COA_FNG-0310-06-16_to_07-11.json",
+      "name": "COA_FNG-0310-06-16_to_07-11"
+    },
+    {
+      "file": "COA_FNG-0310-06-02_to_06-15_.json",
+      "name": "COA_FNG-0310-06-02_to_06-15_"
+    },
+    {
+      "file": "COA_FNG-0310-05-06_to_06-01.json",
+      "name": "COA_FNG-0310-05-06_to_06-01"
+    },
+    {
+      "file": "COA_FNG-0310-04-13_to_05.json",
+      "name": "COA_FNG-0310-04-13_to_05"
+    },
+    {
+      "file": "COA_FNG-0310-03-21_to_12.json",
+      "name": "COA_FNG-0310-03-21_to_12"
+    },
+    {
+      "file": "COA_FNG-0310-03-07_to_20.json",
+      "name": "COA_FNG-0310-03-07_to_20"
+    },
+    {
+      "file": "COA_FNG-0310-02-15_to_06.json",
+      "name": "COA_FNG-0310-02-15 to 06"
+    },
+    {
+      "file": "FNG-0310-02-COA_1-14.json",
+      "name": "FNG-0310-02-COA_1-14_"
+    }
+  ],
+  "generated": "2026-08-19"
+}

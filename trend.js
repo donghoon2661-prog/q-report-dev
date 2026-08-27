@@ -4,19 +4,33 @@ const TREND_API = (typeof HISTORY_API !== "undefined")
   ? HISTORY_API
   : ((typeof API_ROOT !== "undefined" ? API_ROOT : "") + "/delayhistory");
 let trendCache = null;
+let trendCacheAt = 0;
+const TREND_CACHE_TTL = 5 * 60 * 1000; /* 5분 */
 let betaMenu = 'trend';
 
 async function loadTrendData() {
-  if (trendCache) return trendCache;
-  const res = await fetch(TREND_API, { cache: "no-store" }).then(r => r.ok ? r.json() : { months: [] });
-  const months = res.months || [];
-  const all = [];
-  for (const m of months) {
-    const d = await fetch(`${TREND_API}?month=${m}`, { cache: "no-store" }).then(r => r.ok ? r.json() : { records: [] });
-    (d.records || []).forEach(r => all.push(r));
+  if (trendCache && (Date.now() - trendCacheAt) < TREND_CACHE_TTL) return trendCache;
+  try {
+    const res = await fetch(TREND_API, { cache: "no-store" }).then(r => r.ok ? r.json() : { months: [] });
+    const months = res.months || [];
+    const results = await Promise.allSettled(
+      months.map(m =>
+        fetch(`${TREND_API}?month=${m}`, { cache: "no-store" })
+          .then(r => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
+      )
+    );
+    const all = [];
+    results.forEach((r, i) => {
+      if (r.status !== "fulfilled") { console.warn("[trend] month load failed:", months[i], r.reason); return; }
+      (r.value.records || []).forEach(x => all.push(x));
+    });
+    trendCache = all;
+    trendCacheAt = Date.now();
+  } catch (e) {
+    console.error("[trend] loadTrendData failed:", e);
+    if (!trendCache) trendCache = [];
   }
-  trendCache = all;
-  return all;
+  return trendCache;
 }
 
 /* ---------- BETA 탭 메인 ---------- */

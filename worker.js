@@ -1599,16 +1599,18 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         const v = await env.OQC.get(k, "text");
         if (v !== null) try { kv[k] = JSON.parse(v); } catch { kv[k] = v; }
       }
-      /* delayHistory:YYYY-MM 키도 수집 — cursor pagination */
-      let backupDHCursor = undefined, backupDHComplete = false;
-      while (!backupDHComplete) {
-        const backupDHRes = await env.OQC.list({ prefix: "delayHistory:", ...(backupDHCursor ? { cursor: backupDHCursor } : {}) });
-        for (const item of backupDHRes.keys) {
-          const v = await env.OQC.get(item.name, "text");
-          if (v !== null) try { kv[item.name] = JSON.parse(v); } catch { kv[item.name] = v; }
+      /* delayHistory:YYYY-MM, schedule:{bkg}, map:{bkg} 키도 수집 — cursor pagination */
+      for (const prefix of ["delayHistory:", "schedule:", "map:"]) {
+        let bCursor = undefined, bComplete = false;
+        while (!bComplete) {
+          const bRes = await env.OQC.list({ prefix, ...(bCursor ? { cursor: bCursor } : {}) });
+          for (const item of bRes.keys) {
+            const v = await env.OQC.get(item.name, "text");
+            if (v !== null) try { kv[item.name] = JSON.parse(v); } catch { kv[item.name] = v; }
+          }
+          if (bRes.list_complete) { bComplete = true; }
+          else { bCursor = bRes.cursor; }
         }
-        if (backupDHRes.list_complete) { backupDHComplete = true; }
-        else { backupDHCursor = backupDHRes.cursor; }
       }
       return json({ backupAt: stampNow(), kv });
     }
@@ -1639,15 +1641,15 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
           restored.push(k);
         } else { skipped.push(k); }
       }
-      /* delayHistory:YYYY-MM 키 복원 */
+      /* delayHistory:YYYY-MM, schedule:{bkg}, map:{bkg} 키 복원 */
       for (const [k, v] of Object.entries(kv)) {
-        if (k.startsWith("delayHistory:")) {
+        if (k.startsWith("delayHistory:") || k.startsWith("schedule:") || k.startsWith("map:")) {
           await env.OQC.put(k, JSON.stringify(v));
           restored.push(k);
         }
       }
       return json({ ok: true, restoredFrom: date, restored, skipped,
-        note: "shipments not restored — run POST /collect to rebuild cache",
+        note: "shipments not restored — run POST /collect to rebuild shipments cache",
         postRestoreAction: "Run POST /collect after restore to rebuild shipments cache" });
     }
 

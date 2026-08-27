@@ -120,9 +120,7 @@ function renderSystemTab(){
         <div style="margin-top:4px">
           ${s.etaActual
             ? `<span style="font-size:10px;color:var(--fog)">도착 완료</span>`
-            : (mapFresh
-              ? ``
-              : `<button class="sys-map-refresh" data-bkg="${s.booking}" style="font-size:10px;padding:2px 7px;border:1px solid #F2C14E;color:#F2C14E;background:none">REFRESH</button>`)}
+            : `<button class="sys-map-refresh" data-bkg="${s.booking}" style="font-size:10px;padding:2px 7px;border:1px solid #F2C14E;color:#F2C14E;background:none">REFRESH</button>`}
         </div>
       </span>
     </div>`; }).join('')}

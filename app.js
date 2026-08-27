@@ -660,15 +660,23 @@ function refreshData(){
   if(t) t.classList.add("busy");
   const el = document.getElementById("rstatus");
   if(el) el.innerHTML = "Reloading…";
-  Promise.all([
-    loadPO(), loadHistory(),
-    fetch(source(),{cache:"no-store"}).then(r=>r.ok?r.json():Promise.reject())
-  ]).then(([,,data])=>{
-    render(data);
-    if(el) el.innerHTML = `Reloaded — ${toKST(data.updated)}`;
-  }).catch(e=>{
-    if(el) el.innerHTML = `Reload failed — ${e.message||"no response"}`;
-  }).finally(()=>{ refreshing = false; if(t) t.classList.remove("busy"); });
+  const dataPromise = fetch(source(),{cache:"no-store"}).then(r=>r.ok?r.json():Promise.reject(new Error("HTTP "+r.status)));
+  Promise.allSettled([loadPO(), loadHistory(), dataPromise])
+    .then(([poRes, histRes, dataRes])=>{
+      if(dataRes.status !== "fulfilled"){
+        if(el) el.innerHTML = `Reload failed — ${dataRes.reason&&dataRes.reason.message||"no response"}`;
+        return;
+      }
+      const data = dataRes.value;
+      render(data);
+      const warnings = [];
+      if(poRes.status !== "fulfilled") warnings.push("PO");
+      if(histRes.status !== "fulfilled") warnings.push("History");
+      if(el) el.innerHTML = warnings.length
+        ? `Reloaded (partial: ${warnings.join(", ")} unavailable) — ${toKST(data.updated)}`
+        : `Reloaded — ${toKST(data.updated)}`;
+    })
+    .finally(()=>{ refreshing = false; if(t) t.classList.remove("busy"); });
 }
 
 /* ---------- 라우팅 ---------- */
@@ -810,6 +818,8 @@ function fetchAndRender(attempt){
       } else {
         console.error('[fetchAndRender] all retries failed, using FALLBACK');
         render(FALLBACK);
+        const el = document.getElementById("rstatus");
+        if(el) el.innerHTML = `⚠️ OFFLINE SAMPLE DATA — Live API unavailable`;
       }
     });
 }

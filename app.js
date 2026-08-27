@@ -771,6 +771,10 @@ function applyRoleRestrictions(){
   const showOps = (ACCESS_ROLE === 'admin');
   if(addbar) addbar.style.display = showOps ? '' : 'none';
   if(pobox)  pobox.style.display  = showOps ? '' : 'none';
+  const devLink  = document.getElementById('dev-site-link');
+  const mainLink = document.getElementById('main-site-link');
+  if(devLink)  devLink.style.display  = isAdmin ? '' : 'none';
+  if(mainLink) mainLink.style.display = isAdmin ? '' : 'none';
 }
 
 function proceedAfterUnlock(){

@@ -267,8 +267,7 @@ function showGapLog(booking){
 }
 
 /* ---------- 배지 ---------- */
-const DELAY_WATCH_D = 4;
-const DELAY_ALERT_D = 7;
+/* DELAY_WATCH_D / DELAY_ALERT_D 는 config.js에서 선언 (3 / 7) */
 function poDelay(s){
   const orig = s.planEta || POETA[s.booking] || s.poEta;
   if(!orig || !s.eta) return null;

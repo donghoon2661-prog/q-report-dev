@@ -83,7 +83,10 @@ function renderSystemTab(){
       const MAP_OK_MS = 12 * 60 * 60 * 1000;
       const mapAge = mapAt ? (Date.now() - new Date(mapAt.replace(' ','T').replace(/Z$/,'')+'Z').getTime()) : Infinity;
       const mapFresh = mapAge < MAP_OK_MS;
-      const mapStatus = mapOk
+      const notDeparted = !s.spDep && !s.etaActual;
+      const mapStatus = notDeparted
+        ? `<span style="color:var(--fog);font-size:10px">No Map (Not Departed)</span>`
+        : mapOk
         ? `<span style="color:var(--sail)">ok</span>`
         : (s.mapError
           ? (()=>{
@@ -119,6 +122,8 @@ function renderSystemTab(){
         <div style="margin-top:4px">
           ${s.etaActual
             ? `<span style="font-size:10px;color:var(--fog)">도착 완료</span>`
+            : notDeparted
+            ? ``
             : `<button class="sys-map-refresh" data-bkg="${s.booking}" style="font-size:10px;padding:2px 7px;border:1px solid #F2C14E;color:#F2C14E;background:none">REFRESH</button>`}
         </div>
       </span>

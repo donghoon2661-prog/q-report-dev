@@ -330,6 +330,7 @@ dd .dim{opacity:.65}
 .ph.sail{border-color:var(--sail);color:var(--sail)}
 .ph.dock{border-color:var(--dock);color:var(--dock)}
 .ph.done{border-color:var(--fog);color:var(--fog)}
+.ph.book{border-color:#60A5FA;color:#60A5FA}
 /* ── Shipment Schedule table ── */
 .sch-wrap{margin:0 0 18px;border-top:1px solid var(--line-soft);padding-top:16px}
 .sch-label{font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.14em;color:var(--fog);margin-bottom:8px}

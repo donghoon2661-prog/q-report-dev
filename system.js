@@ -4,7 +4,8 @@ function renderSystemTab(){
   const el = document.getElementById('sys-content');
   if(!el) return;
   const d = CUR;
-
+  /* 디버그 */ console.log('[renderSystemTab] CUR shipments checkedAt:');
+  (d&&d.shipments||[]).forEach(s=>console.log(`  bkg=${s.booking} checkedAt=${s.checkedAt} scheduleCheckedAt=${s.scheduleCheckedAt} mapAt=${s.mapAt}`));
   if(!d || !d.shipments){ el.innerHTML = `<div class="sys-err">No data loaded yet.</div>`; return; }
 
   function nextCron(){
@@ -65,7 +66,11 @@ function renderSystemTab(){
 
       const schedErrLoc = s.scheduleError
         ? (s.scheduleError.match(/-([A-Z]{3})\b/)||[])[1] || '' : '';
-      const schedStatus = s.scheduleError
+      /* scheduleCheckedAt 기준 12시간 이내면 stale이어도 ok로 표시 */
+      const SCHED_OK_MS = 12 * 60 * 60 * 1000;
+      const schedAge = schedAt ? (Date.now() - new Date(schedAt.replace(' ','T').replace(/Z$/,'')+'Z').getTime()) : Infinity;
+      const schedFresh = schedAge < SCHED_OK_MS;
+      const schedStatus = (s.scheduleError && !schedFresh)
         ? `<span class="sys-warn">failed</span>${schedErrLoc?` <span style="color:var(--buoy);font-size:10px" title="${(s.scheduleError||'').replace(/"/g,'&quot;')}">· ${schedErrLoc}</span>`:''}`
         : `<span class="sys-ok">ok</span>`;
       const mapStatus = mapOk

@@ -23,11 +23,15 @@ async function loadPO(){
     PO     = j.po  || j;
     POETA  = j.eta || {};
     PHOTOS = j.photos || {};
-    try{ localStorage.setItem(PO_KEY, JSON.stringify({po:PO,eta:POETA,photos:PHOTOS})); }catch(_){}
+    try{ localStorage.setItem(PO_KEY, JSON.stringify({po:PO,eta:POETA,photos:PHOTOS,cachedAt:new Date().toISOString().slice(0,16).replace("T"," ")})); }catch(_){}
   }catch(_){
     try{
       const c = JSON.parse(localStorage.getItem(PO_KEY) || "{}") || {};
       PO = c.po || c; POETA = c.eta || {}; PHOTOS = c.photos || {};
+      /* 캐시 사용 중임을 UI에 표시 */
+      const cachedAt = c.cachedAt || null;
+      const el = document.getElementById("rstatus");
+      if(el && cachedAt) el.innerHTML += ` <span style="color:var(--buoy);font-size:11px">(PO: cached ${cachedAt})</span>`;
     }catch(__){ PO = {}; POETA = {}; PHOTOS = {}; }
   }
   return PO;

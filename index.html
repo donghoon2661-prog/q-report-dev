@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kossan OQC</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#E8000F">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kossan OQC">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+
+<div id="gate"><div class="gate-box">
+  <div class="gate-mark">PRODUCT&nbsp;&nbsp;REPORT</div>
+  <input id="pw" type="password" placeholder="password" autocomplete="current-password">
+  <button class="gate-btn" id="gate-go">ENTER</button>
+  <div id="gate-err"></div>
+  <button id="themesw" type="button" role="switch" aria-checked="false">
+    <span class="knob"></span><span class="lbl">LIGHT MODE</span>
+  </button>
+</div></div>
+
+<button id="logout-btn" type="button" hidden>LOGOUT</button>
+<button id="mobile-system-btn" type="button" hidden>SYSTEM</button>
+
+<main id="menu" hidden>
+  <button class="tile" data-go="ship">
+    <div class="bar"></div><div class="idx">01 / LOGISTICS</div>
+    <h2>SHIPMENT<br>STATUS</h2>
+    <p>Vessel positions, port calls and shipment schedule, tracked by Booking No.</p>
+    <div class="go">OPEN →</div>
+  </button>
+  <button class="tile" data-go="quality">
+    <div class="bar"></div><div class="idx">02 / OQC</div>
+    <h2>QUALITY<br>ANALYSIS</h2>
+    <p>COA-based outgoing quality dashboard. Measurements and trends by worksheet.</p>
+    <div class="go">OPEN →</div>
+  </button>
+  <button id="update-btn" type="button">UPDATE</button>
+  <button id="force-reload-btn" type="button">FORCE RELOAD</button>
+  <button id="restore-btn" type="button">RESTORE</button>
+</main>
+
+<div id="changelog" hidden></div>
+<div id="restore-modal" hidden></div>
+
+<section id="ship">
+  <div class="topbar">
+    <button class="btn" id="back">← MENU</button>
+    <span class="tz-mob-display" id="tz-mob-display"></span>
+    <h1 id="ship-title" title="Click to reload data">SHIPMENT STATUS</h1>
+    <div class="stamp" id="stamp"></div>
+    <span class="spacer"></span>
+    <div class="tz-group" id="tz-group">
+      <div class="tz-clock">
+        <span class="tz-time" id="tz-time-KR">--:--:--</span>
+        <span class="tz-abbr" id="tz-time-KR-abbr">KST</span>
+      </div>
+      <div class="tz-clock">
+        <span class="tz-time" id="tz-time-MY">--:--:--</span>
+        <span class="tz-abbr" id="tz-time-MY-abbr">MYT</span>
+      </div>
+      <div class="tz-clock">
+        <span class="tz-time" id="tz-time-US">--:--:--</span>
+        <span class="tz-abbr" id="tz-time-US-abbr">UTC</span>
+      </div>
+    </div>
+    <span class="brand"><span class="l1">KOSSAN</span><span class="l2">SHIPMENT CONTROL</span></span>
+  </div>
+  <div class="addbar">
+    <label for="newbkg">Booking No.</label>
+    <input id="newbkg" type="text" placeholder="KULM00000000" autocomplete="off" spellcheck="false">
+    <button class="btn" id="addbtn">Add</button>
+  </div>
+  <div id="gaplog" hidden></div>
+  <div id="alertbar" hidden></div>
+  <div id="rstatus"></div>
+
+  <details id="pobox">
+    <summary>MAPPING — paste from spreadsheet</summary>
+    <ol class="pohelp">
+      <li><b>PO / containers</b> — PO on the left, booking on the right. Leave the booking cell blank
+          to reuse the one above.<br><code>FNG031007 (Container 12 of 18)&#9;KULM40326600</code></li>
+      <li><b>Original schedule</b> — booking + planned arrival (YYYY-MM-DD). Drives the delay badges
+          and email alerts.<br><code>KULM40326600 2026-08-23</code></li>
+      <li><b>Photos</b> — booking + pCloud folder link, one per booking. Each container must be a
+          subfolder named <code>FNG-0310-07-12</code>.<br><code>KULM40326600 https://u.pcloud.link/publink/show?code=…</code></li>
+    </ol>
+    <p class="pohelp note-small">Mix all three freely — each line is read on its own.
+       Saved on the server, so it shows on every device. The first save asks for the refresh key.</p>
+    <textarea id="poin" spellcheck="false" placeholder="FNG031007 (Container 12 of 18)&#9;KULM40326600&#10;FNG031007 (Container 13 of 18)&#10;KULM40326600 2026-08-23&#10;KULM40326600 https://u.pcloud.link/publink/show?code=..."></textarea>
+    <div class="porow">
+      <button class="btn" id="posave">Apply</button>
+      <button class="btn ghost danger" id="poclear" title="Deletes all mapping data on the server">Clear all</button>
+      <span id="postatus"></span>
+    </div>
+    <div id="potable"></div>
+  </details>
+
+  <div class="tabs">
+    <button class="tab on" data-view="map">MAP</button>
+    <button class="tab" data-view="list">LIST</button>
+    <button class="tab" data-view="history">HISTORY</button>
+    <button class="tab tab-admin" data-view="beta" id="tab-beta" style="display:none">BETA</button>
+    <button class="tab tab-admin" data-view="system" id="tab-system" style="display:none">SYSTEM</button>
+  </div>
+  <div class="tz-mobile-bar" id="tz-mobile-bar">
+    <button class="tz-mob-btn active" id="tzm-KR" onclick="setTzMobile('KR')">KO</button>
+    <button class="tz-mob-btn" id="tzm-MY" onclick="setTzMobile('MY')">MY</button>
+    <button class="tz-mob-btn" id="tzm-US" onclick="setTzMobile('US')">UTC</button>
+  </div>
+  <nav class="ship-tabbar" aria-label="Section switch">
+    <button data-view="map" class="on"><span class="ico">▥</span>Map</button>
+    <button data-view="list"><span class="ico">☰</span>List</button>
+    <button data-view="history"><span class="ico">◷</span>History</button>
+  </nav>
+  <div class="lane">
+    <div>CARRIER<b>HMM</b></div>
+    <div>POL<b>PORT KLANG</b></div>
+    <div>REFRESH<b id="lane-refresh">3× / DAY</b></div>
+    <div>POD<b>LOS ANGELES</b></div>
+    <div>BOOKINGS<b id="n-bkg">—</b></div>
+    <div>EARLIEST ARRIVAL<b id="n-eta">—</b></div>
+  </div>
+
+  <div id="mapwrap">
+    <div id="map"></div>
+    <aside id="side">
+      <p class="hint">Orange markers show each booking’s current position, using the coordinates provided by HMM Track &amp; Trace. Hover for the vessel name, click for details.</p>
+      <p class="local-time-note">All dates and times are local dates and times.</p>
+      <div class="legend">
+        <span><i style="background:#FF6B35"></i>Current position</span>
+        <span><i style="background:#8AA4B5"></i>Port call</span>
+      </div>
+    </aside>
+    <div class="tablerow">
+      <table id="vtable"><thead><tr>
+        <th>VESSEL</th><th>ETD · PORT KLANG</th><th>ETD · SINGAPORE</th><th>LA ETB / DEST ETA</th>
+      </tr></thead><tbody id="vtbody"></tbody></table>
+      <div id="vremark"></div>
+      <aside id="popanel" hidden></aside>
+    </div>
+  </div>
+
+  <div id="cards">
+    <section id="overview"></section>
+    <table id="otable"><thead><tr>
+      <th>VESSEL</th><th>ETD · PORT KLANG</th><th>ETD · SINGAPORE</th><th>LA ETB / DEST ETA</th>
+    </tr></thead><tbody id="otbody"></tbody></table>
+    <div id="oremark"></div>
+    <div id="cardlist"></div>
+  </div>
+
+  <div id="history">
+    <div id="hist-summary">
+      <table id="hist-stats-table"><thead><tr>
+        <th>MONTH</th><th>VESSELS</th><th>AVG DELAY</th><th>MAX DELAY</th>
+      </tr></thead><tbody id="hist-stats-tbody"></tbody></table>
+      <div id="hist-chart-wrap"><canvas id="hist-chart"></canvas></div>
+    </div>
+    <div id="hist-months"></div>
+    <div id="hist-detail" hidden>
+      <div class="hist-detailhead">
+        <button id="hist-back" class="btn ghost">&larr; MONTHS</button>
+        <span id="hist-monthtitle"></span>
+        <span id="hist-monthmeta" class="hist-meta"></span>
+      </div>
+      <table id="hist-table"><thead><tr>
+        <th>VESSEL / BOOKING</th><th>POL &rarr; POD</th><th>ETD (PLAN)</th><th>T/S DWELL</th><th>ETA (PLAN)</th><th>DELAY</th>
+      </tr></thead><tbody id="hist-tbody"></tbody></table>
+      <div class="hist-note">ETD/ETA format: actual (planned) &middot; T/S DWELL is the wait time from T/S port arrival to departure</div>
+      <div class="hist-legend">
+        <span><i class="hist-sw" style="background:#FF6B6B"></i>7+ DAYS</span>
+        <span><i class="hist-sw" style="background:#F2C14E"></i>4-6 DAYS</span>
+        <span><i class="hist-sw" style="background:var(--paper)"></i>1-3 DAYS</span>
+        <span><i class="hist-sw" style="background:var(--sail)"></i>ON TIME / EARLY</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="beta" style="display:none"></div>
+  <div id="system" style="display:none">
+    <div id="sys-content"></div>
+  </div>
+
+  <div id="hist-popup" hidden>
+    <div id="hist-popup-card">
+      <div class="hist-popuphead">
+        <span id="hist-popup-title"></span>
+        <span id="hist-popup-close">&times;</span>
+      </div>
+      <div id="hist-popup-sub"></div>
+      <div id="hist-popup-legs"></div>
+      <div class="hist-popuptotal">
+        <span>= TOTAL DELAY (LA ETA)</span>
+        <span id="hist-popup-total"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer id="ftr">
+  Positions, routes and port calls come directly from the coordinates and progress ratios provided by the HMM Track &amp; Trace cargo map (trackMap).
+  HMM states that the cargo location shown on that map is for reference only and may not be fully accurate.
+</footer>
+
+<script src="devlog.js"></script><!-- DEVLOG 임시 디버그 — 작업 완료 후 이 줄 삭제 -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=3"></script>
+<script src="config.js?v=3" defer></script>
+<script src="map.js?v=3" defer></script>
+<script src="po.js?v=3" defer></script>
+<script src="trend.js"></script>
+  <script src="system.js?v=3" defer></script>
+<script src="history.js?v=3" defer></script>
+<script src="app.js?v=3" defer></script>
+
+<div id="qbar" style="display:none;position:sticky;top:0;z-index:9999;align-items:center;gap:12px;
+ padding:9px 16px;background:#07141C;border-bottom:1px solid #1E3A4C;
+ font-family:'Barlow Condensed',system-ui,sans-serif;letter-spacing:.14em;font-size:13px">
+ <button id="qback" style="background:none;color:#8AA4B5;border:1px solid #1E3A4C;padding:5px 12px;cursor:pointer;font:inherit">← MENU</button>
+ <span id="q-title" style="color:var(--paper);cursor:pointer" title="Click to redraw">QUALITY ANALYSIS</span>
+ <span class="brand" style="margin-left:auto;margin-right:76px"><span class="l1">KOSSAN</span><span class="l2">OQC</span></span>
+</div>
+<section id="qview">
+
+<header>
+  <span class="stamp">PRE-SHIPMENT QA · <b>KOSSAN</b> · NITRILE</span>
+  <h1>품질 관제 대시보드<small>COA 검사 기준 v10.8 (실스펙·사이즈별) · 데이터 기준일 2026-07-16 (오타 정정 반영)</small></h1>
+  <div class="chips" id="chips"></div>
+</header>
+<main>
+  <section class="panel active" id="p-det" aria-label="탐지 현황">
+    <h2><span class="dot" style="background:var(--gA)"></span>워크시트별 DETECTION<span style="margin-left:auto;font-weight:400">건수 클릭 → 상세</span></h2>
+    <div class="scroll" id="left"></div>
+  </section>
+  <section class="panel" id="p-chart" aria-label="스펙 관제">
+    <h2><span class="dot"></span>스펙 관제 — Lot별 최악값 vs 허용 한계</h2>
+    <div class="item-chips" id="ichips"></div>
+    <div class="chart-wrap"><div class="chart-box"><canvas id="chart"></canvas></div></div>
+    <div class="margin-strip" id="mstrip"></div>
+    <div class="spec-line-info">
+      <span class="k"><span class="sw" style="background:var(--gA)"></span>Off-spec 한계 (S1)</span>
+      <span class="k"><span class="sw" style="background:var(--gB)"></span>근접 밴드 경계 (S2)</span>
+      <span class="k"><span class="sw" style="background:var(--blue)"></span>Lot 최악값 (126050xxxx=5월 · 126060xxxx=6월)</span>
+    </div>
+  </section>
+  <section class="panel" id="p-date" aria-label="제조일자">
+    <h2><span class="dot" style="background:var(--ok)"></span>제조일자 → 워크시트 → 백데이터</h2>
+    <div class="scroll" id="right"></div>
+  </section>
+</main>
+<nav class="tabbar" aria-label="패널 전환">
+  <button data-panel="p-det" class="on"><span class="ico">!</span>탐지<span class="tb-badge" id="tbBadge"></span></button>
+  <button data-panel="p-chart"><span class="ico">▥</span>스펙 차트</button>
+  <button data-panel="p-date"><span class="ico">▤</span>제조일자</button>
+</nav>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-h">
+      <div><div class="t" id="mTitle"></div><div class="s" id="mSub"></div></div>
+      <button class="close-x" id="mClose" aria-label="닫기">×</button>
+    </div>
+    <div class="sector-tabs" id="mTabs"></div>
+    <div class="bd-wrap" id="mBody"></div>
+  </div>
+</div>
+
+
+
+</section>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js?v=3"></script>
+<script src="quality.js?v=3" defer></script>
+</body>
+</html>
+

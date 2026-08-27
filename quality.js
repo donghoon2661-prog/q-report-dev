@@ -81,12 +81,21 @@ async function loadCOA(){
   if(!ir.ok) throw new Error('index.json ' + ir.status);
   const idx = await ir.json();
   const list = Array.isArray(idx.sheets) ? idx.sheets : [];
-  const files = await Promise.all(list.map(async e => {
+  const results = await Promise.allSettled(list.map(async e => {
     const r = await fetch(COA_DIR + e.file, {cache:'no-store'});
     if(!r.ok) throw new Error(e.file + ' ' + r.status);
     const j = await r.json();
     return { name: j.name || e.name, sectors: j.sectors || [], detections: j.detections || [] };
   }));
+  const files = [];
+  results.forEach((res, i) => {
+    if(res.status !== 'fulfilled'){
+      console.error('[quality] COA file load failed:', list[i].file, res.reason);
+    } else {
+      files.push(res.value);
+    }
+  });
+  if(!files.length) throw new Error('All COA files failed to load');
   return {
     sheets: files.map(f => ({ name: f.name, sectors: f.sectors })),
     detections: files.flatMap(f => f.detections.map(d => ({ ...d, sheet: d.sheet || f.name })))
@@ -217,7 +226,10 @@ function rebuildDynamic(){
 
 function buildQuality(){
   const lots = [...new Set(DATA.sheets.flatMap(s=>s.sectors.map(x=>x.lot)))].sort();
-  const lotMonth = l => '20'+l.slice(1,3)+'-'+l.slice(3,5);
+  const lotMonth = l => {
+    const m = /^[A-Z](\d{2})(\d{2})/.exec(String(l||''));
+    return m ? '20'+m[1]+'-'+m[2] : 'unknown';
+  };
   function widthMargin(rows){
     let m = Infinity;
     for(const sz in rows){

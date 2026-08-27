@@ -477,6 +477,45 @@ function alertLevel(delay, ro) {
   return "ok";
 }
 
+/* ---------- /lookup + collectSchedule 공통 normalize ----------
+   delay/alert/rollover/actualFlags 판정을 한 곳에서 처리 */
+async function normalizeOne(env, item) {
+  const bkg = item.booking;
+  const nowStr = new Date().toISOString().slice(0, 16).replace("T", " ") + "Z";
+  item.checkedAt = item.checkedAt || nowStr;
+  item.scheduleCheckedAt = item.scheduleCheckedAt || nowStr;
+
+  /* actual 플래그 */
+  Object.assign(item, computeActualFlags(item));
+
+  /* planEta / delayDays / alert */
+  try {
+    const poetaMap = JSON.parse((await env.OQC.get("poeta")) || "{}") || {};
+    const dv = delayVsPlan(item, poetaMap[bkg]);
+    if (dv !== null) { item.planEta = poetaMap[bkg]; item.delayDays = dv; }
+    const ro = detectRollover(item);
+    if (ro) { item.rollover = !!ro.rollover; if (ro.rollover) item.rolloverDays = ro.overdueDays; }
+    const lvl = alertLevel(dv, ro);
+    if (lvl) item.alert = lvl;
+  } catch (e) { console.error("[normalizeOne] delay/alert failed", bkg, String(e)); }
+
+  /* delayHistory 스냅샷 */
+  if (item.etaActual && !item.delaySnapshotDone) {
+    try {
+      let planEta = {}, hist = {};
+      try { planEta = JSON.parse((await env.OQC.get("poeta")) || "{}") || {}; } catch (_) {}
+      try { hist    = JSON.parse((await env.OQC.get("history")) || "{}") || {}; } catch (_) {}
+      const snap = await recordDelaySnapshot(env, item, planEta, hist);
+      if (snap && snap.done) {
+        item.delaySnapshotDone = true;
+        item.delayCompletedAt = snap.completedAt || null;
+      }
+    } catch (e) { console.error("[normalizeOne] delaySnapshot failed", bkg, String(e)); }
+  }
+
+  return item;
+}
+
 /* ---------- POD 하역완료 감지 + delayHistory 백데이터 수집 ----------
    목적: 완료된 부킹의 계획 대비 실제 지연일을 월별로 영구 누적 (통계용 원자재).
    지금은 저장만 한다 — 집계/화면은 차후 별도 작업.
@@ -922,7 +961,7 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
   for (const bkg of pending) {                       // 조회 실패 → 직전 값 유지
     const old = prevMap.get(bkg);
     if (old) {
-      /* ship:{bkg} 개별 KV도 확인 — /lookup(REFRESH) 결과가 더 최신일 수 있음 */
+      /* schedule:{bkg} 개별 KV도 확인 — /lookup(REFRESH) 결과가 더 최신일 수 있음 */
       const indivRaw = await env.OQC.get("schedule:" + bkg).catch(() => null);
       const indiv = indivRaw ? (() => { try { return JSON.parse(indivRaw); } catch(_) { return null; } })() : null;
       const indivAt = indiv ? (indiv.scheduleCheckedAt || indiv.checkedAt || null) : null;
@@ -1089,7 +1128,7 @@ async function collectMaps(env, forceBkg = []) {
 
   const budget = newBudget();
   const errors = [];
-  /* ship:{bkg} 개별 KV의 route/mapAt을 saved에 병합 — 스케줄 cron이 route 없는 데이터를
+  /* map:{bkg} 개별 KV의 route/mapAt을 saved에 병합 — 스케줄 cron이 route 없는 데이터를
      shipments KV에 덮어써도 맵 수집 시 최신 route를 보존하기 위함 */
   await Promise.all(saved.shipments.map(async s => {
     try {
@@ -1260,33 +1299,8 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         const nowStr = new Date().toISOString().slice(0, 16).replace("T", " ") + "Z";
         one.checkedAt = nowStr;
         one.scheduleCheckedAt = nowStr;
-        /* actual 플래그 — collectSchedule과 동일하게 적용 */
-        Object.assign(one, computeActualFlags(one));
-
-        /* planEta / delayDays — poeta KV에서 읽어서 붙임 */
-        try {
-          const poetaRaw = await env.OQC.get("poeta");
-          const poetaMap = poetaRaw ? JSON.parse(poetaRaw) : {};
-          const dv = delayVsPlan(one, poetaMap[bkg]);
-          if (dv !== null) { one.planEta = poetaMap[bkg]; one.delayDays = dv; }
-          const lvl = alertLevel(dv, null);
-          if (lvl) one.alert = lvl;
-        } catch (_) {}
-
-        /* discharge 확인 시 delayHistory 저장 + 삭제 타이머 시작
-           이후 Cron에서 HMM 재조회 없이 3일 유예 후 자동 삭제됨 */
-        if (one.etaActual && !one.delaySnapshotDone) {
-          try {
-            let planEta = {}, hist = {};
-            try { planEta = JSON.parse((await env.OQC.get("poeta")) || "{}") || {}; } catch (_) {}
-            try { hist    = JSON.parse((await env.OQC.get("history")) || "{}") || {}; } catch (_) {}
-            const snap = await recordDelaySnapshot(env, one, planEta, hist);
-            if (snap && snap.done) {
-              one.delaySnapshotDone = true;
-              one.delayCompletedAt = snap.completedAt || null;
-            }
-          } catch (_) {}
-        }
+        /* collectSchedule과 동일한 normalize 경로로 처리 */
+        one = await normalizeOne(env, one);
         try {
           /* schedule:{bkg}에 스케줄 필드만 저장 — 지도 필드 제외 */
           const _MAP_KEYS = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
@@ -1413,8 +1427,16 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         return json({ month, count: arr.length, records: arr });
       }
       /* 월 지정 없으면 존재하는 월 키 목록만 (list 비용 절약) */
-      const list = await env.OQC.list({ prefix: "delayHistory:" });
-      return json({ months: list.keys.map(k => k.name.replace("delayHistory:", "")) });
+      /* cursor pagination — 키가 많아져도 전체 목록 수집 */
+      const allDHKeys = [];
+      let dhCursor = undefined, dhComplete = false;
+      while (!dhComplete) {
+        const dhRes = await env.OQC.list({ prefix: "delayHistory:", ...(dhCursor ? { cursor: dhCursor } : {}) });
+        allDHKeys.push(...dhRes.keys);
+        if (dhRes.list_complete) { dhComplete = true; }
+        else { dhCursor = dhRes.cursor; }
+      }
+      return json({ months: allDHKeys.map(k => k.name.replace("delayHistory:", "")) });
     }
 
     /* --- 지연 백데이터 수동 입력 (사이트 추적 이전에 진행됐던 과거 건 소급 등록용) ---
@@ -1606,11 +1628,16 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         const v = await env.OQC.get(k, "text");
         if (v !== null) try { kv[k] = JSON.parse(v); } catch { kv[k] = v; }
       }
-      /* delayHistory:YYYY-MM 키도 수집 */
-      const dhList = await env.OQC.list({ prefix: "delayHistory:" });
-      for (const item of dhList.keys) {
-        const v = await env.OQC.get(item.name, "text");
-        if (v !== null) try { kv[item.name] = JSON.parse(v); } catch { kv[item.name] = v; }
+      /* delayHistory:YYYY-MM 키도 수집 — cursor pagination */
+      let backupDHCursor = undefined, backupDHComplete = false;
+      while (!backupDHComplete) {
+        const backupDHRes = await env.OQC.list({ prefix: "delayHistory:", ...(backupDHCursor ? { cursor: backupDHCursor } : {}) });
+        for (const item of backupDHRes.keys) {
+          const v = await env.OQC.get(item.name, "text");
+          if (v !== null) try { kv[item.name] = JSON.parse(v); } catch { kv[item.name] = v; }
+        }
+        if (backupDHRes.list_complete) { backupDHComplete = true; }
+        else { backupDHCursor = backupDHRes.cursor; }
       }
       return json({ backupAt: stampNow(), kv });
     }

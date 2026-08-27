@@ -4,6 +4,8 @@ const HIST_API = (typeof HISTORY_API !== "undefined")
   ? HISTORY_API
   : ((typeof API_ROOT !== "undefined" ? API_ROOT : "") + "/delayhistory");
 let histCache = null;
+let histCacheAt = 0;
+const HIST_CACHE_TTL = 5 * 60 * 1000; /* 5분 */
 let histChartInst = null;
 
 function histBadgeClass(d){
@@ -21,18 +23,27 @@ function histBadgeLabel(d){
 function histShortDate(s){ return s ? monAbbr(String(s).slice(5,7))+"/"+String(s).slice(8,10) : "—"; }
 
 async function loadHistoryData(){
-  if(histCache) return histCache;
-  const monthsRes = await fetch(HIST_API,{cache:"no-store"}).then(r=>r.ok?r.json():{months:[]});
-  const months = monthsRes.months||[];
-  const byPlanMonth = await Promise.all(months.map(m=>
-    fetch(`${HIST_API}?month=${m}`,{cache:"no-store"}).then(r=>r.ok?r.json():{records:[]})
-  ));
-  const byEtdMonth = {};
-  byPlanMonth.forEach(res=>(res.records||[]).forEach(rec=>{
-    const key = rec.polDepMonth || "unknown";
-    (byEtdMonth[key] = byEtdMonth[key]||[]).push(rec);
-  }));
-  histCache = byEtdMonth;
+  if(histCache && (Date.now() - histCacheAt) < HIST_CACHE_TTL) return histCache;
+  try {
+    const monthsRes = await fetch(HIST_API,{cache:"no-store"}).then(r=>r.ok?r.json():{months:[]});
+    const months = monthsRes.months||[];
+    const results = await Promise.allSettled(months.map(m=>
+      fetch(`${HIST_API}?month=${m}`,{cache:"no-store"}).then(r=>r.ok?r.json():Promise.reject(new Error("HTTP "+r.status)))
+    ));
+    const byEtdMonth = {};
+    results.forEach((res,i)=>{
+      if(res.status !== "fulfilled"){ console.warn("[history] month load failed:", months[i], res.reason); return; }
+      (res.value.records||[]).forEach(rec=>{
+        const key = rec.polDepMonth || "unknown";
+        (byEtdMonth[key] = byEtdMonth[key]||[]).push(rec);
+      });
+    });
+    histCache = byEtdMonth;
+    histCacheAt = Date.now();
+  } catch(e) {
+    console.error("[history] loadHistoryData failed:", e);
+    if(!histCache) histCache = {};
+  }
   return histCache;
 }
 
@@ -95,6 +106,7 @@ function renderHistorySummary(data, keys){
 
   const ctx = document.getElementById("hist-chart");
   if(histChartInst){ histChartInst.destroy(); histChartInst = null; }
+  if(typeof Chart === "undefined"){ console.warn("[history] Chart.js not loaded"); return; }
   const barColor = cssVar('--sail','#3FD0A6');
   histChartInst = new Chart(ctx, {
     type: "bar",

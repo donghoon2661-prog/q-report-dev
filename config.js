@@ -1,7 +1,18 @@
 /* ===== config.js — 상수 · 유틸 · 날짜 포맷 ===== */
 const QUALITY_URL = "quality.html";
-const API = "https://kossan-oqc-dev.dhoqc.workers.dev/data";
+const API_ROOT = "https://kossan-oqc-dev.dhoqc.workers.dev";
+const API = API_ROOT + "/data";
+const HISTORY_API = API_ROOT + "/delayhistory";
+const BOOKINGS_API = API_ROOT + "/bookings";
+const LOOKUP_API = API_ROOT + "/lookup";
+const COLLECT_API = API_ROOT + "/collect";
+const DEBUG_API = API_ROOT + "/debug";
+const SYSTEM_API = API_ROOT + "/lastrun";
 const source = () => API || "shipments.json";
+
+/* Worker와 프론트 공통 지연 기준 */
+const DELAY_WATCH_D = 3;
+const DELAY_ALERT_D = 7;
 
 const FALLBACK = {
   updated:"2026-08-03 10:12",

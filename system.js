@@ -314,7 +314,12 @@ async function sysMapRefreshOne(bkg, btn){
     const item = (res.shipments||[]).find(s=>s.booking===bkg);
     const mapOk = item && item.route;  // mapError 있어도 route 있으면 ok
     const mapAt  = item && item.mapAt ? fmtSysTime(item.mapAt) : '—';
-    const errMsg = item && item.mapError ? item.mapError : (res.mapErrors||[]).find(e=>e.includes(bkg))||'';
+    /* 부킹별 mapError 우선, 없으면 세션 에러(부킹번호 없는 에러) 사용 */
+    const errMsg = item && item.mapError
+      ? item.mapError
+      : (res.mapErrors||[]).find(e=>e.includes(bkg))
+        || (res.mapErrors||[]).find(e=>e.includes('세션'))
+        || '';
 
     /* MAP 셀(3번째 컬럼) 직접 업데이트 */
     if(row){

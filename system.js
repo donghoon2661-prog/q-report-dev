@@ -90,11 +90,19 @@ function renderSystemTab(){
         ? `<span style="color:var(--sail)">ok</span>`
         : (s.mapError
           ? (()=>{
-              const region = (s.mapError.match(/cf-ray\s+[\w]+-([A-Z]{2,4})[,)]/i)||[])[1]||'';
-              const m = s.mapError.match(/^(\d{2}:\d{2}:\d{2})\s+(.*)/s);
-              const t = m?m[1]:''; const msg = m?m[2]:s.mapError;
-              return `<span style="color:var(--buoy)">ERR${region?' · '+region:''}</span>
-                <div style="font-size:10px;color:var(--buoy);margin-top:2px;word-break:break-all">${t?t+' ':''}${msg.replace(/</g,'&lt;')}</div>`;
+              /* cf-ray에서 지역코드 추출 — 세션/지도 에러 모두 커버 */
+              const region = (s.mapError.match(/cf-ray\s+[\w]+-([A-Z]{2,4})(?:[,)\s]|$)/i)||[])[1]||'';
+              /* 시간 추출 */
+              const timeM = s.mapError.match(/(\d{2}:\d{2})/);
+              const t = timeM ? timeM[1] : '';
+              /* 에러 종류 판별 */
+              const isSession = /세션/.test(s.mapError);
+              const codeM = s.mapError.match(/response\s+(\d{3})/);
+              const code = codeM ? codeM[1] : '';
+              const errLabel = isSession
+                ? `SESSION ERR${region?' ('+region+')':''}`
+                : `${code||'ERR'}${region?' ('+region+')':''}`;
+              return `<span style="color:var(--buoy)">${errLabel}</span>${t?`<span style="color:var(--fog);font-size:10px;margin-left:6px">${t}</span>`:''}`;
             })()
           : `<span style="color:var(--fog)">—</span>`);
 

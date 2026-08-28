@@ -165,8 +165,8 @@ function nextRun(){
 
 /* ---------- 테마 타일 ---------- */
 const TILE = {
-  dark : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+  dark : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2f79_1_06b086bcb2b8a0b805a1b0d6',
+  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2f79_1_06b086bcb2b8a0b805a1b0d6'
 };
 
 /* ---------- 항구 좌표 (글로벌 인덱스) ---------- */

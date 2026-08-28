@@ -373,8 +373,8 @@ function computeActualFlags(item) {
     polDepActual: !!item.polDepActual || hasEv("DEPARTURE", "POL") || hasEv("FEEDER LOADING", "POL") || hasEv("FEEDER DEPARTURE"),
     tsArrActual:  !!item.tsArrActual  || hasEv("ARRIVAL", "T/S") || hasEv("FEEDER ARRIVAL", "T/S"),
     tsDepActual:  !!item.tsDepActual  || hasEv("DEPARTURE", "T/S"),
-    etaActual:    !!item.etaActual    || hasEv("BERTHING", "POD") || hasEv("DISCHARG", "POD") || hasEv("ARRIVAL", "POD")
-                                      || hasCur("DISCHARG", "POD") || hasCur("BERTHING", "POD") || hasCur("ARRIVAL", "POD"),
+    etaActual:    !!item.etaActual    || hasEv("DISCHARG", "POD")
+                                      || hasCur("DISCHARG", "POD"),
   };
 }
 

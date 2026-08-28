@@ -331,16 +331,20 @@ async function sysMapRefreshOne(bkg, btn){
               <button class="sys-map-refresh" data-bkg="${bkg}" style="font-size:10px;padding:2px 7px;border:1px solid #F2C14E;color:#F2C14E;background:none">REFRESH</button>
             </div>`;
         } else {
-          const region = (errMsg.match(/cf-ray\s+[\w]+-([A-Z]{2,4})[,)]/i)||[])[1] || '';
-          const errParsed = errMsg.match(/^(\d{2}:\d{2}:\d{2})\s+(.*)/s);
-          const errTime = errParsed ? errParsed[1] : '';
-          const errText = errParsed ? errParsed[2] : errMsg;
+          const region2 = (errMsg.match(/cf-ray\s+[\w]+-([A-Z]{2,4})(?:[,)\s]|$)/i)||[])[1] || '';
+          const timeM2 = errMsg.match(/(\d{2}:\d{2})/);
+          const t2 = timeM2 ? timeM2[1] : '';
+          const isSession2 = /세션/.test(errMsg);
+          const codeM2 = errMsg.match(/response\s+(\d{3})/);
+          const code2 = codeM2 ? codeM2[1] : '';
+          const errLabel2 = isSession2
+            ? `SESSION ERR${region2?' ('+region2+')':''}`
+            : `${code2||'ERR'}${region2?' ('+region2+')':''}`;
           mapCol.innerHTML = `
             <div style="display:flex;align-items:center;gap:6px">
-              <span style="color:var(--buoy)">ERR${region?' · '+region:''}</span>
-              <span class="sys-dim" style="font-size:10px">${mapAt}</span>
+              <span style="color:var(--buoy)">${errLabel2}</span>
+              ${t2?`<span style="color:var(--fog);font-size:10px">${t2}</span>`:''}
             </div>
-            <div style="font-size:10px;color:var(--buoy);margin-top:2px;word-break:break-all">${errTime ? errTime+' ' : ''}${errText.replace(/</g,'&lt;')}</div>
             <div style="margin-top:4px">
               <button class="sys-map-refresh" data-bkg="${bkg}" style="font-size:10px;padding:2px 7px;border:1px solid #F2C14E;color:#F2C14E;background:none">REFRESH</button>
             </div>`;

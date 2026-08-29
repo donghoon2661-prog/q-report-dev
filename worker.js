@@ -849,12 +849,17 @@ async function assembleShipments(env) {
 
     const base = savedMap.get(bkg) || {};
     const merged = { ...base };
-    if (schedule && typeof schedule === "object") Object.assign(merged, schedule);
+
+    /* schedule:{bkg} merge 시 actual 플래그 4개는 제외 */
+    if (schedule && typeof schedule === "object") {
+      const { etaActual: _e, polDepActual: _p, tsArrActual: _ta, tsDepActual: _td, ...scheduleClean } = schedule;
+      Object.assign(merged, scheduleClean);
+    }
     if (map && typeof map === "object") Object.assign(merged, map);
     if (!merged.booking) merged.booking = bkg;
 
-    /* actual 플래그는 KV에 저장된 값을 신뢰하지 않고 항상 재계산
-       이유: schedule:{bkg}에 오래된 etaActual:true가 남아있으면 래칫 로직으로 영구 고착됨 */
+    /* base(shipments 캐시)에도 오래된 actual:true가 남아있을 수 있으므로
+       최종 조립 후 actual 4개를 전부 제거하고 events/status 기반으로 재계산 */
     const {
       etaActual: _oldEta,
       polDepActual: _oldPol,
@@ -1111,9 +1116,11 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
     budget
   };
   const MAP_KEYS = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
-  /* schedule:{bkg} 먼저 저장 — 원본 KV 우선 */
+  const ACTUAL_KEYS = new Set(["etaActual","polDepActual","tsArrActual","tsDepActual"]);
+  /* schedule:{bkg} 먼저 저장 — 원본 KV 우선
+     actual 플래그 4개는 제외: assembleShipments에서 항상 재계산하므로 KV에 캐시하지 않음 */
   const scheduleResults = await Promise.allSettled(shipments.map(async s => {
-    const schedData = Object.fromEntries(Object.entries(s).filter(([k]) => !MAP_KEYS.has(k)));
+    const schedData = Object.fromEntries(Object.entries(s).filter(([k]) => !MAP_KEYS.has(k) && !ACTUAL_KEYS.has(k)));
     await env.OQC.put("schedule:" + s.booking, JSON.stringify(schedData));
   }));
   scheduleResults.forEach((r, i) => {
@@ -1287,7 +1294,8 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         try {
           /* schedule:{bkg}에 스케줄 필드만 저장 — 지도 필드 제외 */
           const _MAP_KEYS = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
-          const schedOnly = Object.fromEntries(Object.entries(one).filter(([k]) => !_MAP_KEYS.has(k)));
+          const _ACTUAL_KEYS = new Set(["etaActual","polDepActual","tsArrActual","tsDepActual"]);
+          const schedOnly = Object.fromEntries(Object.entries(one).filter(([k]) => !_MAP_KEYS.has(k) && !_ACTUAL_KEYS.has(k)));
           await env.OQC.put("schedule:" + bkg, JSON.stringify(schedOnly));
           one.savedToData = true;
 

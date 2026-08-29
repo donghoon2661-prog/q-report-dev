@@ -359,6 +359,19 @@ function parseBooking(html, bkg) {
 /* ---------- 이벤트 기반 actual 플래그 계산 ----------
    각 날짜 필드가 실제 HMM 이벤트로 확인됐는지 여부를 boolean으로 반환.
    시간이 지났다는 이유만으로 actual 처리하지 않는다. */
+/* POD 하역 완료 판정 — 스케줄 수집 종료 기준
+   etaActual(BERTHING/ARRIVAL 포함)과 달리 DISCHARG+POD 이벤트가 실제로 있을 때만 true
+   이 함수가 true인 부킹만 cron 스케줄 조회를 종료한다 */
+function hasPodDischarged(s) {
+  const pod = String(s.pod || "").toUpperCase().trim();
+  if (!pod) return false;
+  return (s.events || []).some(e => {
+    const status = String(e.status || "").toUpperCase();
+    const loc    = String(e.loc    || "").toUpperCase().trim();
+    return status.includes("DISCHARG") && (loc.includes(pod) || pod.includes(loc));
+  });
+}
+
 function computeActualFlags(item) {
   const evs = (item.events || []).map(e => (e.status || "").toUpperCase());
   const hasEv = (...kw) => evs.some(st => kw.every(k => st.includes(k)));
@@ -849,26 +862,10 @@ async function assembleShipments(env) {
 
     const base = savedMap.get(bkg) || {};
     const merged = { ...base };
-
-    /* schedule:{bkg} merge 시 actual 플래그 4개는 제외 */
-    if (schedule && typeof schedule === "object") {
-      const { etaActual: _e, polDepActual: _p, tsArrActual: _ta, tsDepActual: _td, ...scheduleClean } = schedule;
-      Object.assign(merged, scheduleClean);
-    }
+    if (schedule && typeof schedule === "object") Object.assign(merged, schedule);
     if (map && typeof map === "object") Object.assign(merged, map);
     if (!merged.booking) merged.booking = bkg;
-
-    /* base(shipments 캐시)에도 오래된 actual:true가 남아있을 수 있으므로
-       최종 조립 후 actual 4개를 전부 제거하고 events/status 기반으로 재계산 */
-    const {
-      etaActual: _oldEta,
-      polDepActual: _oldPol,
-      tsArrActual: _oldTsArr,
-      tsDepActual: _oldTsDep,
-      ...cleanMerged
-    } = merged;
-    Object.assign(cleanMerged, computeActualFlags(cleanMerged));
-    return cleanMerged;
+    return merged;
   }));
 
   return { saved, shipments: shipments.filter(Boolean) };
@@ -895,7 +892,7 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
   const prev = await getSaved(env);
   const prevMap = new Map((prev && prev.shipments || []).map(s => [s.booking, s]));
   const discharged = new Set(
-    [...prevMap.values()].filter(s => s.etaActual).map(s => s.booking)
+    [...prevMap.values()].filter(hasPodDischarged).map(s => s.booking)
   );
 
   /* forceBkgs: stale 재시도 모드 — 지정 부킹만, cursor 이동 없음 */
@@ -1116,11 +1113,9 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
     budget
   };
   const MAP_KEYS = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
-  const ACTUAL_KEYS = new Set(["etaActual","polDepActual","tsArrActual","tsDepActual"]);
-  /* schedule:{bkg} 먼저 저장 — 원본 KV 우선
-     actual 플래그 4개는 제외: assembleShipments에서 항상 재계산하므로 KV에 캐시하지 않음 */
+  /* schedule:{bkg} 먼저 저장 — 원본 KV 우선 */
   const scheduleResults = await Promise.allSettled(shipments.map(async s => {
-    const schedData = Object.fromEntries(Object.entries(s).filter(([k]) => !MAP_KEYS.has(k) && !ACTUAL_KEYS.has(k)));
+    const schedData = Object.fromEntries(Object.entries(s).filter(([k]) => !MAP_KEYS.has(k)));
     await env.OQC.put("schedule:" + s.booking, JSON.stringify(schedData));
   }));
   scheduleResults.forEach((r, i) => {
@@ -1294,8 +1289,7 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         try {
           /* schedule:{bkg}에 스케줄 필드만 저장 — 지도 필드 제외 */
           const _MAP_KEYS = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
-          const _ACTUAL_KEYS = new Set(["etaActual","polDepActual","tsArrActual","tsDepActual"]);
-          const schedOnly = Object.fromEntries(Object.entries(one).filter(([k]) => !_MAP_KEYS.has(k) && !_ACTUAL_KEYS.has(k)));
+          const schedOnly = Object.fromEntries(Object.entries(one).filter(([k]) => !_MAP_KEYS.has(k)));
           await env.OQC.put("schedule:" + bkg, JSON.stringify(schedOnly));
           one.savedToData = true;
 

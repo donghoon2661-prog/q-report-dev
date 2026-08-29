@@ -368,7 +368,7 @@ function hasPodDischarged(s) {
   return (s.events || []).some(e => {
     const status = String(e.status || "").toUpperCase();
     const loc    = String(e.loc    || "").toUpperCase().trim();
-    return status.includes("DISCHARG") && (loc.includes(pod) || pod.includes(loc));
+    return status.includes("DISCHARG") && loc === pod;
   });
 }
 

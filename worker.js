@@ -852,7 +852,18 @@ async function assembleShipments(env) {
     if (schedule && typeof schedule === "object") Object.assign(merged, schedule);
     if (map && typeof map === "object") Object.assign(merged, map);
     if (!merged.booking) merged.booking = bkg;
-    return merged;
+
+    /* actual 플래그는 KV에 저장된 값을 신뢰하지 않고 항상 재계산
+       이유: schedule:{bkg}에 오래된 etaActual:true가 남아있으면 래칫 로직으로 영구 고착됨 */
+    const {
+      etaActual: _oldEta,
+      polDepActual: _oldPol,
+      tsArrActual: _oldTsArr,
+      tsDepActual: _oldTsDep,
+      ...cleanMerged
+    } = merged;
+    Object.assign(cleanMerged, computeActualFlags(cleanMerged));
+    return cleanMerged;
   }));
 
   return { saved, shipments: shipments.filter(Boolean) };

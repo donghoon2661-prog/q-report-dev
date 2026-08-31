@@ -1073,6 +1073,22 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
     /* 이벤트 기반 actual 플래그 — 시간 경과가 아닌 HMM 이벤트 존재 여부로 판단 */
     Object.assign(item, computeActualFlags(item));
 
+    /* delayLog 적립 — 날짜별 delayDays 기록 (Resend 타이밍 분석용)
+       - delayDays가 숫자인 경우만 기록 (null/undefined 제외, 0은 기록)
+       - 진행 중: 매 Cron 해당 날짜에 기록
+       - etaActual이 이번 Cron에서 처음 true가 된 날(justCompleted): 완료 당일 값 기록
+       - 이미 이전 Cron에서 etaActual=true였던 부킹: 기록 안 함
+       - race 방지: read-modify-write 없이 날짜별 독립 키로 단순 put */
+    if (typeof item.delayDays === "number") {
+      try {
+        const justCompleted = item.etaActual && !(prevSnap && prevSnap.etaActual);
+        if (!item.etaActual || justCompleted) {
+          const kstToday = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+          await env.OQC.put(`delayLog:${bkg}:${kstToday}`, String(item.delayDays));
+        }
+      } catch (e) { console.error("[collectSchedule] delayLog put failed", bkg, String(e)); }
+    }
+
     /* delayHistory 백데이터 수집 — POD 하역완료 감지 시 1회만 저장 */
     if (!item.delaySnapshotDone) {
       try {
@@ -1508,6 +1524,25 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       return json({ to: env.ALERT_TO || null, from: env.ALERT_FROM || "default",
                     candidates: list.map(s => s.booking), ...res });
     }
+    if (url.pathname === "/delaylog") {
+      const bkg = url.searchParams.get("bkg");
+      if (!bkg) return new Response(JSON.stringify({ error: "bkg required" }), { status: 400, headers: JH });
+      const prefix = `delayLog:${bkg}:`;
+      const logs = [];
+      let cursor;
+      do {
+        const res = await env.OQC.list({ prefix, cursor, limit: 1000 });
+        for (const key of res.keys) {
+          const date = key.name.slice(prefix.length); // YYYY-MM-DD
+          const val = await env.OQC.get(key.name);
+          if (val !== null) logs.push({ date, delayDays: Number(val) });
+        }
+        cursor = res.list_complete ? undefined : res.cursor;
+      } while (cursor);
+      logs.sort((a, b) => a.date.localeCompare(b.date));
+      return new Response(JSON.stringify({ booking: bkg, logs }), { headers: JH });
+    }
+
     if (url.pathname === "/alertstate") {
       const v = await env.OQC.get("alertstate");
       return new Response(v || "{}", { headers: JH });

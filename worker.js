@@ -360,8 +360,7 @@ function parseBooking(html, bkg) {
    각 날짜 필드가 실제 HMM 이벤트로 확인됐는지 여부를 boolean으로 반환.
    시간이 지났다는 이유만으로 actual 처리하지 않는다. */
 /* POD 하역 완료 판정 — 스케줄 수집 종료 기준
-   etaActual(BERTHING/ARRIVAL 포함)과 달리 DISCHARG+POD 이벤트가 실제로 있을 때만 true
-   이 함수가 true인 부킹만 cron 스케줄 조회를 종료한다 */
+   etaActual(BERTHING/ARRIVAL 포함)과 달리 DISCHARG+POD 이벤트가 실제로 있을 때만 true */
 function hasPodDischarged(s) {
   const pod = String(s.pod || "").toUpperCase().trim();
   if (!pod) return false;
@@ -384,7 +383,7 @@ function computeActualFlags(item) {
      다시 false로 롤백하지 않는다. 기존 true를 OR로 보존. */
   return {
     polDepActual: !!item.polDepActual || hasEv("DEPARTURE", "POL") || hasEv("FEEDER LOADING", "POL") || hasEv("FEEDER DEPARTURE"),
-    tsArrActual:  !!item.tsArrActual  || hasEv("ARRIVAL", "T/S") || hasEv("FEEDER ARRIVAL", "T/S"),
+    tsArrActual:  !!item.tsArrActual  || hasEv("ARRIVAL", "T/S") || hasEv("FEEDER ARRIVAL", "T/S") || hasEv("FEEDER DISCHARGED", "T/S"),
     tsDepActual:  !!item.tsDepActual  || hasEv("DEPARTURE", "T/S"),
     etaActual:    !!item.etaActual    || hasEv("DISCHARG", "POD")
                                       || hasCur("DISCHARG", "POD"),
@@ -1725,20 +1724,34 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
 
       /* ── 일정 수집 또는 지도 수집 ── */
       const p = await (isMaps ? collectMaps(env) : collectSchedule(env));
+      let notifyResult = {}, notifyError = null;
+      let arrivalResult = {}, arrivalError = null;
       if (!isMaps) {
         const cronErrs = (p.errors || []).map(msg => ({ tag: "cron", msg }));
         if (cronErrs.length) await appendErrorLog(env, cronErrs);
         /* 알림 메일 */
         const saved = await getSaved(env);
-        if (saved) await notifyIfNeeded(env, saved).catch(() => {});
-        if (saved) await notifyArrivalIfNeeded(env, saved).catch(() => {});
+        if (saved) {
+          try { notifyResult = await notifyIfNeeded(env, saved); }
+          catch (e) { notifyError = String(e?.message || e); }
+          try { arrivalResult = await notifyArrivalIfNeeded(env, saved); }
+          catch (e) { arrivalError = String(e?.message || e); }
+        }
       }
       await env.OQC.put("lastrun", JSON.stringify({
         at: stampNow(), trigger, cron, ok: true,
         count: p.ok, mapOk: p.mapOk,
         carried: Array.isArray(p.carried) ? p.carried.length : (p.carried || 0),
         budgetUsed: isMaps ? p.budgetUsedMaps : p.budgetUsed,
-        errors: isMaps ? p.mapErrors : p.errors
+        errors: isMaps ? p.mapErrors : p.errors,
+        ...(isMaps ? {} : {
+          mailSent: notifyResult?.sent ?? 0,
+          mailBookings: notifyResult?.bookings ?? [],
+          mailError: notifyError,
+          arrivalSent: arrivalResult?.sent ?? 0,
+          arrivalBookings: arrivalResult?.bookings ?? [],
+          arrivalError: arrivalError
+        })
       }));
 
     })().catch(e => env.OQC.put("lastrun", JSON.stringify({

@@ -730,7 +730,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
   transform: translate(-50%, -50%) rotate(-30deg);
   font-size: 180px;
   font-weight: 900;
-  color: rgba(255, 60, 60, 0.07);
+  color: rgba(220, 30, 30, 0.18);
   pointer-events: none;
   z-index: 9999;
   letter-spacing: .1em;

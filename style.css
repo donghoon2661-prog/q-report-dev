@@ -537,6 +537,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .hist-badge.b-green{background:#132E24;color:var(--sail);border-color:#1E5C48}
 
 .hist-note{margin-top:10px;font-family:'IBM Plex Mono';font-size:9.5px;color:var(--fog)}
+#hist-table .transit-cell{color:var(--paper);font-size:11.5px;white-space:nowrap}
 .hist-legend{margin-top:10px;display:flex;gap:16px;font-family:'IBM Plex Mono';font-size:10px;color:var(--fog)}
 .hist-sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 

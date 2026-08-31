@@ -332,7 +332,15 @@ function parseBooking(html, bkg) {
     terminals: terms.length ? terms : null,
 
     polDep: feeder ? feeder.etd : mother.etd,
-    tsArr:  feeder ? feeder.eta : null,
+    tsArr:  feeder ? (() => {
+      /* HMM Actual 기준: Feeder Discharged at T/S Port 이벤트 날짜 우선,
+         없으면 Vessel Movement의 feeder.eta(계획값) fallback */
+      const dischEv = events.find(e => {
+        const st = (e.status || "").toUpperCase();
+        return st.includes("FEEDER DISCHARGED") && st.includes("T/S");
+      });
+      return dischEv ? dischEv.at.slice(0, 10) + "T" + dischEv.at.slice(11, 16) : feeder.eta;
+    })() : null,
     tsDep:  feeder ? mother.etd : null,
     eta:    mother.eta,
     destEta,
@@ -381,12 +389,28 @@ function computeActualFlags(item) {
 
   /* 래칫(ratchet): 한 번 actual로 확인된 플래그는 520 에러·carried 등 어떤 상황에서도
      다시 false로 롤백하지 않는다. 기존 true를 OR로 보존. */
+  /* events에서 특정 이벤트의 at 날짜 추출 헬퍼 */
+  const getEvAt = (...kw) => {
+    const ev = (item.events || []).find(e => kw.every(k => (e.status || "").toUpperCase().includes(k)));
+    return ev ? ev.at.slice(0, 16) : null;
+  };
+
   return {
-    polDepActual: !!item.polDepActual || hasEv("DEPARTURE", "POL") || hasEv("FEEDER LOADING", "POL") || hasEv("FEEDER DEPARTURE"),
-    tsArrActual:  !!item.tsArrActual  || hasEv("ARRIVAL", "T/S") || hasEv("FEEDER ARRIVAL", "T/S") || hasEv("FEEDER DISCHARGED", "T/S"),
-    tsDepActual:  !!item.tsDepActual  || hasEv("DEPARTURE", "T/S"),
-    etaActual:    !!item.etaActual    || hasEv("DISCHARG", "POD")
-                                      || hasCur("DISCHARG", "POD"),
+    polDepActual:    !!item.polDepActual || hasEv("DEPARTURE", "POL") || hasEv("FEEDER LOADING", "POL") || hasEv("FEEDER DEPARTURE"),
+    tsArrActual:     !!item.tsArrActual  || hasEv("FEEDER DISCHARGED", "T/S"),  /* HMM Actual 기준: Feeder Discharged at T/S Port만 인정 */
+    tsDepActual:     !!item.tsDepActual  || hasEv("DEPARTURE", "T/S"),
+    etaActual:       !!item.etaActual    || hasEv("DISCHARG", "POD")
+                                         || hasCur("DISCHARG", "POD"),
+    /* HMM 화면 표시용 — Vessel Berthing at POD 기준 (기존 etaActual 완료 판정과 분리) */
+    podBerthingActual: !!item.podBerthingActual || hasEv("BERTHING", "POD") || hasEv("VESSEL BERTHING", "POD"),
+    /* Actual 날짜값 추출 — TRANSIT 계산 및 delayHistory 저장용 */
+    /* polDepActualDate: polDep와 동일한 Feeder/직항 분기 기준 사용
+       Feeder 구간 → Feeder Loading at POL
+       직항 구간   → Vessel Departure from POL */
+    polDepActualDate: item.polDepActualDate || (item.feeder
+      ? getEvAt("FEEDER LOADING", "POL")
+      : getEvAt("VESSEL DEPARTURE", "POL")) || null,
+    podBerthingAt:    item.podBerthingAt    || getEvAt("BERTHING", "POD") || getEvAt("VESSEL BERTHING", "POD") || null,
   };
 }
 
@@ -639,6 +663,10 @@ async function recordDelaySnapshot(env, item, planEtaMap, histMap) {
     delayDays,
     rollover: !!item.rollover,
     polDep: item.polDep || null,
+    /* HMM Actual 기준 날짜 — TRANSIT 계산용 */
+    polDepActualDate: item.polDepActualDate || null,
+    podBerthingAt:    item.podBerthingAt    || null,
+    podBerthingActual: !!item.podBerthingActual,
     planMonth,
     polDepMonth,
     completedAt: discEvt.at,

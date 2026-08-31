@@ -622,9 +622,6 @@ const _localLookupCache = {};
 function render(data){
   /* 디버그: 호출 스택 + 데이터 상태 추적 */
   const _caller = new Error().stack.split('\n').slice(1,3).join(' | ');
-  console.log('[render] called from:', _caller);
-  console.log('[render] cache keys:', Object.keys(_localLookupCache));
-  (data.shipments||[]).slice(0,6).forEach(s=>console.log(`[render]  data bkg=${s.booking} checkedAt=${s.checkedAt} scheduleCheckedAt=${s.scheduleCheckedAt}`));
   /* _localLookupCache 오버라이드: checkedAt 기준으로 더 최신 값으로 교체 */
   if(Object.keys(_localLookupCache).length){
     const tsOf = x => Date.parse(String(x.checkedAt||"").replace(" ","T").replace(/Z?$/,"Z"))||0;
@@ -817,7 +814,7 @@ function proceedAfterUnlock(){
 function fetchAndRender(attempt){
   fetch(source(),{cache:"no-store"})
     .then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status)))
-    .then(data=>{ console.log('[fetchAndRender] success attempt='+attempt); render(data); })
+    .then(data=>{ render(data); })
     .catch(e=>{
       console.warn('[fetchAndRender] attempt='+attempt+' failed:',e&&(e.message||e));
       if(attempt<5){

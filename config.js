@@ -1,6 +1,6 @@
 /* ===== config.js — 상수 · 유틸 · 날짜 포맷 ===== */
 const QUALITY_URL = "quality.html";
-const API_ROOT = "https://kossan-oqc-dev.dhoqc.workers.dev";
+const API_ROOT = "https://kossan-oqc.dhoqc.workers.dev";
 const API = API_ROOT + "/data";
 const HISTORY_API = API_ROOT + "/delayhistory";
 const BOOKINGS_API = API_ROOT + "/bookings";

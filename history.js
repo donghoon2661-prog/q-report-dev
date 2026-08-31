@@ -91,7 +91,22 @@ function monthStats(data, keys){
     const avg = delays.length ? delays.reduce((a,b)=>a+b,0)/delays.length : null;
     const max = delays.length ? Math.max(...delays) : null;
     const {m,y} = histMonthLabel(k);
-    return { key:k, label:`${m} ${y}`, vessels:recs.length, avg, max };
+
+    /* AVG TRANSIT 계산
+       startDate = polDepActualDate || polDep
+       endDate   = podBerthingAt    || actualEta */
+    const transits = recs.map(r => {
+      const from = r.polDepActualDate || r.polDep || null;
+      const to   = r.podBerthingAt    || r.actualEta || null;
+      if (!from || !to) return null;
+      const s = new Date(from), e = new Date(to);
+      if (isNaN(s) || isNaN(e)) return null;
+      const d = Math.round((e - s) / 86400000);
+      return d >= 0 ? d : null;
+    }).filter(d => d !== null);
+    const avgTransit = transits.length ? transits.reduce((a,b)=>a+b,0)/transits.length : null;
+
+    return { key:k, label:`${m} ${y}`, vessels:recs.length, avg, max, avgTransit };
   });
 }
 
@@ -100,6 +115,7 @@ function renderHistorySummary(data, keys){
   const tbody = document.getElementById("hist-stats-tbody");
   tbody.innerHTML = stats.map((s,i)=>`<tr data-idx="${i}">
       <td>${s.label}</td><td>${s.vessels}</td>
+      <td>${s.avgTransit===null?"—":s.avgTransit.toFixed(1)+"d"}</td>
       <td>${s.avg===null?"—":s.avg.toFixed(1)+"d"}</td>
       <td>${s.max===null?"—":s.max+"d"}</td>
     </tr>`).join("");
@@ -123,7 +139,7 @@ function renderHistorySummary(data, keys){
           title: items => stats[items[0].dataIndex].label,
           label: item => {
             const s = stats[item.dataIndex];
-            return [`Vessels: ${s.vessels}`,`Avg delay: ${s.avg===null?"—":s.avg.toFixed(1)+"d"}`,`Max delay: ${s.max===null?"—":s.max+"d"}`];
+            return [`Vessels: ${s.vessels}`,`Avg transit: ${s.avgTransit===null?"—":s.avgTransit.toFixed(1)+"d"}`,`Avg delay: ${s.avg===null?"—":s.avg.toFixed(1)+"d"}`,`Max delay: ${s.max===null?"—":s.max+"d"}`];
           }
         }}
       },

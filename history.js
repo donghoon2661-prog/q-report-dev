@@ -156,16 +156,35 @@ function renderHistoryDetail(monthKey){
   document.getElementById("hist-monthtitle").textContent = `${m} ${y}`;
   document.getElementById("hist-monthmeta").textContent = `ETD basis · ${recs.length} shipment${recs.length===1?"":"s"}`;
 
+  /* TRANSIT 계산 헬퍼
+     startDate = polDepActualDate(Actual Loading Port Departure) || polDep(계획)
+     endDate   = podBerthingAt(Actual Discharging Port Arrival)  || actualEta(계획 fallback)
+     음수 / NaN / 유효하지 않은 날짜 → "—" 표시 */
+  const transitDays = (from, to) => {
+    if (!from || !to) return null;
+    const s = new Date(from), e = new Date(to);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return null;
+    const d = Math.round((e - s) / 86400000);
+    return d >= 0 ? d : null;  // 음수는 무효
+  };
+
   const tbody = document.getElementById("hist-tbody");
   tbody.innerHTML = recs.map((r,i)=>{
     const dwell = (r.legBreakdown||[]).find(l=>l.label==="T/S Departure ETD");
     const dwellTxt = dwell && dwell.note ? dwell.note.split("d vs")[0]+"d" : "—";
+
+    const startDate = r.polDepActualDate || r.polDep || null;
+    const endDate   = r.podBerthingAt    || r.actualEta || null;
+    const transit   = transitDays(startDate, endDate);
+    const transitTxt = transit !== null ? `${transit}d` : "—";
+
     return `<tr>
       <td><span class="vname">${r.vessel||"—"}</span><span class="vbkg">${r.booking}</span></td>
       <td class="route">${(r.pol||"").split(",")[0]||"—"} &rarr; ${(r.pod||"").split(",")[0]||"—"}</td>
       <td>${histShortDate(r.polDep)} <span class="plandate">(${histShortDate(r.polDep)})</span></td>
       <td class="dwell">${dwellTxt}</td>
       <td>${histShortDate(r.actualEta)} <span class="plandate">(${histShortDate(r.planEta)})</span></td>
+      <td class="transit-cell">${transitTxt}</td>
       <td><span class="hist-badge ${histBadgeClass(r.delayDays)}" data-idx="${i}">${histBadgeLabel(r.delayDays)}</span></td>
     </tr>`;
   }).join("");

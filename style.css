@@ -720,3 +720,32 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
   .tz-mob-btn.active{border-color:var(--sail);color:var(--sail);background:var(--hull)}
   .tz-mob-display{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--paper);letter-spacing:.03em;white-space:nowrap}
 }
+
+/* ===== DEV 환경 표시 ===== */
+#dev-watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 180px;
+  font-weight: 900;
+  color: rgba(255, 60, 60, 0.07);
+  pointer-events: none;
+  z-index: 9999;
+  letter-spacing: .1em;
+  user-select: none;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+.dev-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff3c3c;
+  border: 1px solid #ff3c3c;
+  border-radius: 3px;
+  padding: 1px 5px;
+  letter-spacing: .08em;
+  vertical-align: middle;
+  margin-left: 6px;
+  line-height: 1.4;
+}

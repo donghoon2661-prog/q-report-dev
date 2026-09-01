@@ -204,16 +204,26 @@ function renderVesselTable(data) {
   const byVessel = {};
   data.forEach(r => {
     const k = (r.vessel || "Unknown") + "_" + (r.voyage || "");
-    if (!byVessel[k]) byVessel[k] = { vessel: r.vessel || "—", voyage: r.voyage || "—", delays: [], rollovers: 0 };
+    if (!byVessel[k]) byVessel[k] = { vessel: r.vessel || "—", voyage: r.voyage || "—", delays: [], rollovers: 0, transits: [] };
     if (r.delayDays !== null && r.delayDays !== undefined) byVessel[k].delays.push(r.delayDays);
     if (r.rollover) byVessel[k].rollovers++;
+    const ttFrom = r.polDepActualDate || r.polDep || null;
+    const ttTo   = r.podBerthingAt    || r.actualEta || null;
+    if (ttFrom && ttTo) {
+      const ttS = new Date(ttFrom), ttE = new Date(ttTo);
+      if (!isNaN(ttS.getTime()) && !isNaN(ttE.getTime())) {
+        const ttD = Math.round((ttE - ttS) / 86400000);
+        if (ttD >= 0) byVessel[k].transits.push(ttD);
+      }
+    }
   });
 
   const rows = Object.values(byVessel)
     .filter(v => v.delays.length)
     .map(v => {
       const avg = +(v.delays.reduce((a, b) => a + b, 0) / v.delays.length).toFixed(1);
-      return { ...v, avg, count: v.delays.length };
+      const avgTT = v.transits.length ? Math.round(v.transits.reduce((a, b) => a + b, 0) / v.transits.length) : null;
+      return { ...v, avg, count: v.delays.length, avgTT };
     })
     .sort((a, b) => b.avg - a.avg);
 
@@ -225,6 +235,7 @@ function renderVesselTable(data) {
       <th style="text-align:left;padding:6px 8px">VOYAGE</th>
       <th style="text-align:right;padding:6px 8px">건수</th>
       <th style="text-align:right;padding:6px 8px">평균 지연</th>
+      <th style="text-align:right;padding:6px 8px">평균 TT</th>
       <th style="text-align:right;padding:6px 8px">롤오버</th>
     </tr></thead>
     <tbody>${rows.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
@@ -233,6 +244,9 @@ function renderVesselTable(data) {
       <td style="padding:6px 8px;text-align:right;color:var(--fog)">${r.count}</td>
       <td style="padding:6px 8px;text-align:right;color:${r.avg>0?'var(--warn)':r.avg<0?'#4caf8a':'var(--fog)'}">
         ${r.avg>0?"+":""}${r.avg}d
+      </td>
+      <td style="padding:6px 8px;text-align:right;color:var(--fog)">
+        ${r.avgTT !== null ? r.avgTT + 'd' : '—'}
       </td>
       <td style="padding:6px 8px;text-align:right;color:${r.rollovers>0?'var(--warn)':'var(--fog)'}">
         ${r.rollovers||"—"}

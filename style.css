@@ -795,6 +795,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .cal-detail-dates span{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--paper)}
 .cal-delay{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:1px 5px;border-radius:2px;background:#1A2A1A;color:#6FCF97}
 .cal-delay-alert{background:#2A1A1A;color:#EB5757}
+.cal-change-badge{font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:1px 5px;border-radius:2px;background:#1A1A2A;color:#8AA4B5;letter-spacing:.04em}
 .cal-detail-empty{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--fog);padding:8px 0}
 .cal-empty{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--fog);padding:40px 0;text-align:center}
 

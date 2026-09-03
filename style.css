@@ -777,6 +777,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .cal-chip-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
 .cal-chip-type{font-size:8.5px;opacity:.75;flex-shrink:0}
 .cal-chip-name{overflow:hidden;text-overflow:ellipsis}
+.cal-chip-chg{font-size:8.5px;opacity:0.7;flex-shrink:0;white-space:nowrap}
 .cal-chip-first{margin-bottom:0}
 .cal-chip-changed{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.08em;padding:0 5px 2px;line-height:1.4}
 

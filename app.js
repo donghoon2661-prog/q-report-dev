@@ -463,19 +463,13 @@ function schTableHTML(s) {
   </div>`;
 }
 
-function svcBadge(s) {
+function svcDisplay(s) {
   const svc = (s.svc || '').trim().toUpperCase();
-  if (svc === 'PS3' || svc === 'PS5') {
-    return `<span class="svc-confirmed">${svc}</span>`;
-  }
+  if (svc === 'PS3' || svc === 'PS5') return { cls: '', text: svc };
   const names = Array.isArray(s.names) ? s.names.join(',').toUpperCase() : '';
-  if (names.includes('HAI PHONG')) {
-    return `<span class="svc-inferred">PS5</span>`;
-  }
-  if (names.includes('YANTIAN')) {
-    return `<span class="svc-inferred">PS3</span>`;
-  }
-  return `<span class="svc-unknown">UNKNOWN</span>`;
+  if (names.includes('HAI PHONG')) return { cls: 'svc-inferred', text: 'PS5' };
+  if (names.includes('YANTIAN'))   return { cls: 'svc-inferred', text: 'PS3' };
+  return { cls: 'svc-unknown', text: 'UNKNOWN' };
 }
 
 function cardHTML(s){
@@ -514,7 +508,7 @@ function cardHTML(s){
         <div class="f"><label>SIN ETA</label><span>${fmtDT(s.tsArr)}</span></div>
         <div class="f"><label>SIN ETD</label><span>${fmtDT(s.tsDep)}</span></div>
         <div class="f"><label>LA ETB</label><span>${fmtDT(s.eta)}</span></div>
-        <div class="f"><label>SERVICE</label>${svcBadge(s)}</div>
+        <div class="f"><label>SERVICE</label><span class="${svcDisplay(s).cls}">${svcDisplay(s).text}</span></div>
         <div class="f"><label>FEEDER</label><span>${s.feeder||"— (direct)"}</span></div>
         <div class="f"><label>CNTR</label><span>${s.cntrQty||"—"}</span></div>
         <div class="f"><label>PO / LOT</label><span>${po||"—"}</span></div>

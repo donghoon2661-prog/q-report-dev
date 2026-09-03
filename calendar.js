@@ -94,7 +94,9 @@ function buildCalendarItems(shipments) {
       eta:             s.eta        ? s.eta.slice(0, 10)     : null,
       destEta:         s.destEta    ? s.destEta.slice(0, 10) : null,
       alert:           s.alert      || 'ok',
-      delayDays:       s.delayDays  ?? null
+      delayDays:       s.delayDays  ?? null,
+      etaChangeCount:    s.etaChangeCount    || 0,
+      polDepChangeCount: s.polDepChangeCount || 0
     });
   }
   return items;
@@ -219,12 +221,22 @@ function detailPanelHTML(dateStr, dateMap) {
       ? `<span class="cal-delay${it.alert === 'alert' ? ' cal-delay-alert' : ''}">` +
         (it.delayDays > 0 ? '+' : '') + it.delayDays + 'd</span>'
       : '';
+    const ordinal = n => {
+      if (n === 1) return '1st';
+      if (n === 2) return '2nd';
+      if (n === 3) return '3rd';
+      return n + 'th';
+    };
+    const etaChangeBadge = it.etaChangeCount > 0
+      ? `<span class="cal-change-badge">${ordinal(it.etaChangeCount)} ETA change</span>` : '';
+    const etdChangeBadge = it.polDepChangeCount > 0
+      ? `<span class="cal-change-badge">${ordinal(it.polDepChangeCount)} ETD change</span>` : '';
     return `<div class="cal-detail-row">` +
            `<span class="cal-detail-dot" style="background:${pal.dot}"></span>` +
            `<div class="cal-detail-body">` +
            `<div class="cal-detail-vessel">${it.vessel || ''}` +
            (it.voyage ? ` <span class="cal-detail-voy">${it.voyage}</span>` : '') +
-           delayHTML + `</div>` +
+           delayHTML + etaChangeBadge + etdChangeBadge + `</div>` +
            `<div class="cal-detail-bkg">${it.booking}</div>` +
            `<div class="cal-detail-dates">` +
            (it.firstSeenPolDep

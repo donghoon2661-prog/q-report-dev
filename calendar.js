@@ -88,8 +88,7 @@ function buildCalendarItems(shipments) {
       eta:         s.eta        ? s.eta.slice(0, 10)     : null,
       destEta:     s.destEta    ? s.destEta.slice(0, 10) : null,
       alert:       s.alert      || 'ok',
-      delayDays:   s.delayDays  ?? null,
-      planEta:     s.planEta    || null
+      delayDays:   s.delayDays  ?? null
     });
   }
   return items;
@@ -213,7 +212,6 @@ function detailPanelHTML(dateStr, dateMap) {
            `<div class="cal-detail-dates">` +
            `<span><span class="cal-dt-lbl">ETD PKG</span>${fmtCalDate(it.polDep)}</span>` +
            `<span><span class="cal-dt-lbl">ETA LA</span>${fmtCalDate(it.calendarEta)}</span>` +
-           (it.planEta ? `<span><span class="cal-dt-lbl">PLAN</span>${fmtCalDate(it.planEta)}</span>` : '') +
            `</div></div></div>`;
   }).join('');
 

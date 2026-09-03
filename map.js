@@ -124,19 +124,63 @@ function initMap(data){
     });
   });
 
-  const seen={};
-  data.shipments.forEach((s,idx)=>{
+  /* 0.05도 이내 같은 위치 → 클러스터링 */
+  const CLUSTER_D = 0.05;
+  const located = data.shipments.map((s, idx) => {
     const L2 = locate(s);
-    if(!L2){ markers.push(null); return; }
-    let [lat,lng] = L2.pos;
-    const key = lat.toFixed(1)+","+lng.toFixed(1);
-    seen[key]=(seen[key]||0)+1;
-    if(seen[key]>1){ lat += 0.9*(seen[key]-1); lng += 1.4*(seen[key]-1); }
-    const m = L.circleMarker([lat,lng],{radius:8,color:cssVar('--buoy','#FF6B35'),weight:2,
-      fillColor:'#FF6B35',fillOpacity:L2.atPort?1:0.45}).addTo(map);
-    m.bindTooltip(`${s.vessel} ${s.voyage}`,{className:'vsl-tip',direction:'top',offset:[0,-6]});
-    m.on('click',()=>{ select(s,idx,false); showPO(s,idx); });
-    markers.push(m);
+    if (!L2) return null;
+    return { s, idx, L2, lat: L2.pos[0], lng: L2.pos[1] };
+  });
+
+  /* 클러스터 그룹 생성 */
+  const clusters = [];
+  const assigned = new Array(located.length).fill(false);
+  for (let i = 0; i < located.length; i++) {
+    if (!located[i] || assigned[i]) continue;
+    const grp = [i];
+    for (let j = i + 1; j < located.length; j++) {
+      if (!located[j] || assigned[j]) continue;
+      const dlat = Math.abs(located[i].lat - located[j].lat);
+      const dlng = Math.abs(located[i].lng - located[j].lng);
+      if (dlat <= CLUSTER_D && dlng <= CLUSTER_D) { grp.push(j); assigned[j] = true; }
+    }
+    assigned[i] = true;
+    clusters.push(grp);
+  }
+
+  /* 클러스터별 마커 생성 */
+  clusters.forEach(grp => {
+    const first = located[grp[0]];
+    const lat = first.lat, lng = first.lng;
+    const count = grp.length;
+    const atPort = grp.every(i => located[i].L2.atPort);
+
+    if (count === 1) {
+      /* 단독 마커 */
+      const { s, idx, L2 } = first;
+      const m = L.circleMarker([lat, lng], {
+        radius: 8, color: cssVar('--buoy','#FF6B35'), weight: 2,
+        fillColor: '#FF6B35', fillOpacity: L2.atPort ? 1 : 0.45
+      }).addTo(map);
+      m.bindTooltip(`${s.vessel} ${s.voyage}`, {className:'vsl-tip', direction:'top', offset:[0,-6]});
+      m.on('click', () => { select(s, idx, false); showPO(s, idx); });
+      markers.push(m);
+    } else {
+      /* 클러스터 마커 — 숫자 표시 */
+      const vessels = grp.map(i => `${located[i].s.vessel} ${located[i].s.voyage}`).join('<br>');
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:28px;height:28px;border-radius:50%;background:#FF6B35;border:2px solid #FF6B35;opacity:${atPort?1:0.7};display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#07141C;line-height:1">${count}</div>`,
+        iconSize: [28, 28], iconAnchor: [14, 14]
+      });
+      const m = L.marker([lat, lng], { icon }).addTo(map);
+      m.bindTooltip(vessels, {className:'vsl-tip', direction:'top', offset:[0,-14]});
+      m.on('click', () => {
+        const { s, idx } = located[grp[0]];
+        select(s, idx, false); showPO(s, idx);
+      });
+      markers.push(m);
+    }
   });
   if(markers.filter(Boolean).length) map.fitBounds(L.featureGroup(markers.filter(Boolean)).getBounds().pad(0.35));
 }

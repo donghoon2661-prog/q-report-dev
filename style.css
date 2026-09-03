@@ -811,8 +811,8 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .cal-dow:first-child{color:#E53935}
 
 /* 라이트모드: 이전/다음달 칸 회색 */
-body.light .cal-cell.cal-other{background:#F0F4F8}
-body.light .cal-cell.cal-other .cal-dn{color:#B0BEC5}
+[data-theme="light"] .cal-cell.cal-other{background:#F0F4F8}
+[data-theme="light"] .cal-cell.cal-other .cal-dn{color:#B0BEC5}
 
 /* 인쇄 스타일 — 달력만, 흰 배경 */
 @media print{

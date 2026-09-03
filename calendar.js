@@ -193,13 +193,15 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
            `<span class="cal-chip-name">${vname}</span>${etaChg}${etdChg}</div>`;
   }).join('');
 
+  const isSun = new Date(dateStr + 'T00:00:00').getDay() === 0;
   const cls = ['cal-cell',
     isOtherMonth ? 'cal-other' : '',
-    isSel        ? 'cal-sel'   : ''
+    isSel        ? 'cal-sel'   : '',
+    isSun        ? 'cal-sun'   : ''
   ].filter(Boolean).join(' ');
 
   return `<div class="${cls}" onclick="calSelectDate('${dateStr}')">` +
-         `<div class="cal-date-row"><span class="cal-dn">${dayNum}</span>${flagsHTML}</div>` +
+         `<div class="cal-date-row"><span class="cal-dn${isSun ? ' cal-dn-sun' : ''}">${dayNum}</span>${flagsHTML}</div>` +
          chipsHTML + `</div>`;
 }
 
@@ -280,6 +282,7 @@ function renderCalendar() {
     `<span class="cal-month-label">${fmtCalHeader(calYear, calMonth)}</span>` +
     `<button class="cal-nav-btn" onclick="calNext()">&#9654;</button>` +
     `<button class="cal-today-btn" onclick="calGoToday()">TODAY</button>` +
+    `<button class="cal-today-btn" onclick="window.print()">PRINT</button>` +
     `</div>`;
 
   /* 요일 헤더 + 셀 */

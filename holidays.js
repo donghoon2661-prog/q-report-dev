@@ -128,9 +128,9 @@ const HOLIDAYS = {
 };
 
 const HOLIDAY_META = {
-  KR: { flag: "🇰🇷", label: "Korea" },
-  MY: { flag: "🇲🇾", label: "Malaysia" },
-  US: { flag: "🇺🇸", label: "USA" }
+  KR: { flag: "<img src='https://flagcdn.com/16x12/kr.png' width='16' height='12' alt='KR' style='vertical-align:middle;margin-right:1px'>", label: "Korea" },
+  MY: { flag: "<img src='https://flagcdn.com/16x12/my.png' width='16' height='12' alt='MY' style='vertical-align:middle;margin-right:1px'>", label: "Malaysia" },
+  US: { flag: "<img src='https://flagcdn.com/16x12/us.png' width='16' height='12' alt='US' style='vertical-align:middle;margin-right:1px'>", label: "USA" }
 };
 
 /* getHolidays("2026-09-07")

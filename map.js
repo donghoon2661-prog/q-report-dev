@@ -169,9 +169,12 @@ function initMap(data){
 
   const portSeen = {};
   data.shipments.forEach(s=>{
-    if(!Array.isArray(s.route) || s.route.length<2){ markers.push(null); return; }
     const det = detectService(s);
     const svcRoute = det.svc ? getServiceRoute(det.svc) : null;
+    /* s.route 없어도 고정 항로(svcRoute)가 있으면 계속 진행 */
+    if (!svcRoute && (!Array.isArray(s.route) || s.route.length < 2)) {
+      markers.push(null); return;
+    }
 
     if (svcRoute) {
       /* PS3/PS5 실제 항로 표시 */

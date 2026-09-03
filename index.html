@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -123,9 +123,30 @@
     <button class="tz-mob-btn" id="tzm-US" onclick="setTzMobile('US')">UTC</button>
   </div>
   <nav class="ship-tabbar" aria-label="Section switch">
-    <button data-view="map" class="on"><span class="ico">▥</span>Map</button>
-    <button data-view="list"><span class="ico">☰</span>List</button>
-    <button data-view="history"><span class="ico">◷</span>History</button>
+    <button data-view="map" class="on">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+      <span>MAP</span>
+    </button>
+    <button data-view="list">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      <span>LIST</span>
+    </button>
+    <button data-view="calendar">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="4" x2="8" y2="9"/><line x1="16" y1="4" x2="16" y2="9"/><line x1="7" y1="14" x2="11" y2="14"/><line x1="7" y1="18" x2="11" y2="18"/><line x1="13" y1="14" x2="17" y2="14"/></svg>
+      <span>CALENDAR</span>
+    </button>
+    <button data-view="history">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+      <span>HISTORY</span>
+    </button>
+    <button data-view="beta" id="tab-mob-beta" style="display:none" class="tab-admin-mob">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span>BETA</span>
+    </button>
+    <button data-view="system" id="tab-mob-system" style="display:none" class="tab-admin-mob">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>SYSTEM</span>
+    </button>
   </nav>
   <div class="lane">
     <div>CARRIER<b>HMM</b></div>
@@ -227,7 +248,7 @@
 <script src="history.js?v=10" defer></script>
 <script src="holidays.js?v=11" defer></script>
 <script src="calendar.js?v=11" defer></script>
-<script src="app.js?v=10" defer></script>
+<script src="app.js?v=12" defer></script>
 
 <div id="qbar" style="display:none;position:sticky;top:0;z-index:9999;align-items:center;gap:12px;
  padding:9px 16px;background:#07141C;border-bottom:1px solid #1E3A4C;

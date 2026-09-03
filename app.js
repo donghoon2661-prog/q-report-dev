@@ -694,8 +694,9 @@ function setView(v){
   document.getElementById('history').style.display  = v==='history'?'block':'none';
   document.getElementById('system').style.display   = v==='system'?'block':'none';
   document.getElementById('beta').style.display     = v==='beta'?'block':'none';
+  document.getElementById('calendar').style.display = v==='calendar'?'block':'none';
   const laneEl = document.querySelector('.lane');
-  if(laneEl) laneEl.style.display = (v==='history'||v==='system'||v==='beta') ? 'none' : 'flex';
+  if(laneEl) laneEl.style.display = (v==='history'||v==='system'||v==='beta'||v==='calendar') ? 'none' : 'flex';
   if(v==='map'&&map) {
     setTimeout(()=>map.invalidateSize(),60);
     /* MAP 첫 진입 시 ETA 가장 빠른 vessel 자동 표시 */
@@ -716,6 +717,7 @@ function setView(v){
   if(v==='history') renderHistoryMonths().catch(e=>console.error("History",e));
   if(v==='system') renderSystemTab();
   if(v==='beta') renderBetaTab();
+  if(v==='calendar') renderCalendarTab();
 }
 function show(v){
   if(v==="ship" && ACCESS_ROLE==="qc") return;

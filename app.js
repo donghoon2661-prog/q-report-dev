@@ -466,16 +466,16 @@ function schTableHTML(s) {
 function svcBadge(s) {
   const svc = (s.svc || '').trim().toUpperCase();
   if (svc === 'PS3' || svc === 'PS5') {
-    return `<span class="svc-badge svc-confirmed">${svc}</span>`;
+    return `<span class="svc-confirmed">${svc}</span>`;
   }
   const names = Array.isArray(s.names) ? s.names.join(',').toUpperCase() : '';
   if (names.includes('HAI PHONG')) {
-    return `<span class="svc-badge svc-inferred">PS5</span>`;
+    return `<span class="svc-inferred">PS5</span>`;
   }
   if (names.includes('YANTIAN')) {
-    return `<span class="svc-badge svc-inferred">PS3</span>`;
+    return `<span class="svc-inferred">PS3</span>`;
   }
-  return `<span class="svc-badge svc-unknown">UNKNOWN</span>`;
+  return `<span class="svc-unknown">UNKNOWN</span>`;
 }
 
 function cardHTML(s){

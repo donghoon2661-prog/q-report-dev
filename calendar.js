@@ -79,16 +79,19 @@ function buildCalendarItems(shipments) {
     const cEta = calendarEta(s);
     const etd  = s.polDep ? s.polDep.slice(0, 10) : null;
     if (!cEta && !etd) continue;
+    const firstSeen = typeof s.firstSeenEta === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s.firstSeenEta)
+      ? s.firstSeenEta.slice(0, 10) : null;
     items.push({
-      booking:     s.booking,
-      vessel:      s.vessel     || '',
-      voyage:      s.voyage     || null,
-      polDep:      etd,
-      calendarEta: cEta,
-      eta:         s.eta        ? s.eta.slice(0, 10)     : null,
-      destEta:     s.destEta    ? s.destEta.slice(0, 10) : null,
-      alert:       s.alert      || 'ok',
-      delayDays:   s.delayDays  ?? null
+      booking:      s.booking,
+      vessel:       s.vessel     || '',
+      voyage:       s.voyage     || null,
+      polDep:       etd,
+      calendarEta:  cEta,
+      firstSeenEta: (firstSeen && firstSeen !== cEta) ? firstSeen : null,
+      eta:          s.eta        ? s.eta.slice(0, 10)     : null,
+      destEta:      s.destEta    ? s.destEta.slice(0, 10) : null,
+      alert:        s.alert      || 'ok',
+      delayDays:    s.delayDays  ?? null
     });
   }
   return items;
@@ -104,8 +107,9 @@ function buildDateMap(items) {
     map[date].push({ item, type });
   };
   for (const it of items) {
-    add(it.polDep,      it, 'ETD');
-    add(it.calendarEta, it, 'ETA');
+    add(it.polDep,       it, 'ETD');
+    add(it.calendarEta,  it, 'ETA');
+    add(it.firstSeenEta, it, 'FIRST_ETA');
   }
   return map;
 }
@@ -161,8 +165,16 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
     : '';
 
   const chipsHTML = events.map(ev => {
-    const pal   = CAL_PALETTE[colorMap[ev.item.booking] ?? 0];
-    const vname = (ev.item.vessel || ev.item.booking).slice(0, 9);
+    const pal     = CAL_PALETTE[colorMap[ev.item.booking] ?? 0];
+    const vname   = (ev.item.vessel || ev.item.booking).slice(0, 9);
+    const isFirst = ev.type === 'FIRST_ETA';
+    if (isFirst) {
+      return `<div class="cal-chip cal-chip-first" style="background:transparent;color:${pal.dot};border:1px dashed ${pal.dot};opacity:0.55">` +
+             `<span class="cal-chip-dot" style="background:${pal.dot}"></span>` +
+             `<span class="cal-chip-name" style="text-decoration:line-through">ETA ${vname}</span>` +
+             `</div>` +
+             `<div class="cal-chip-changed" style="color:${pal.dot};opacity:0.55">1ST CHANGE</div>`;
+    }
     return `<div class="cal-chip" style="background:${pal.bg};color:${pal.text}">` +
            `<span class="cal-chip-dot" style="background:${pal.dot}"></span>` +
            `<span class="cal-chip-type">${ev.type}</span>` +
@@ -211,6 +223,9 @@ function detailPanelHTML(dateStr, dateMap) {
            `<div class="cal-detail-bkg">${it.booking}</div>` +
            `<div class="cal-detail-dates">` +
            `<span><span class="cal-dt-lbl">ETD PKG</span>${fmtCalDate(it.polDep)}</span>` +
+           (it.firstSeenEta
+             ? `<span><span class="cal-dt-lbl">ORIG ETA</span><s>${fmtCalDate(it.firstSeenEta)}</s></span>`
+             : '') +
            `<span><span class="cal-dt-lbl">ETA LA</span>${fmtCalDate(it.calendarEta)}</span>` +
            `</div></div></div>`;
   }).join('');

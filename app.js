@@ -463,6 +463,21 @@ function schTableHTML(s) {
   </div>`;
 }
 
+function svcBadge(s) {
+  const svc = (s.svc || '').trim().toUpperCase();
+  if (svc === 'PS3' || svc === 'PS5') {
+    return `<span class="svc-badge svc-confirmed">${svc}</span>`;
+  }
+  const names = Array.isArray(s.names) ? s.names.join(',').toUpperCase() : '';
+  if (names.includes('HAI PHONG')) {
+    return `<span class="svc-badge svc-inferred">PS5</span>`;
+  }
+  if (names.includes('YANTIAN')) {
+    return `<span class="svc-badge svc-inferred">PS3</span>`;
+  }
+  return `<span class="svc-badge svc-unknown">UNKNOWN</span>`;
+}
+
 function cardHTML(s){
   const L2 = locate(s);
   const pre = s.preShipment ? `<span class="dtag pre">NOT SHIPPED</span>` : "";
@@ -499,7 +514,7 @@ function cardHTML(s){
         <div class="f"><label>SIN ETA</label><span>${fmtDT(s.tsArr)}</span></div>
         <div class="f"><label>SIN ETD</label><span>${fmtDT(s.tsDep)}</span></div>
         <div class="f"><label>LA ETB</label><span>${fmtDT(s.eta)}</span></div>
-        <div class="f"><label>SERVICE</label><span>${s.svc}</span></div>
+        <div class="f"><label>SERVICE</label>${svcBadge(s)}</div>
         <div class="f"><label>FEEDER</label><span>${s.feeder||"— (direct)"}</span></div>
         <div class="f"><label>CNTR</label><span>${s.cntrQty||"—"}</span></div>
         <div class="f"><label>PO / LOT</label><span>${po||"—"}</span></div>

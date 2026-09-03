@@ -806,6 +806,31 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .cal-change-badge{font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:1px 5px;border-radius:2px;background:#1A1A2A;color:#8AA4B5;letter-spacing:.04em}
 .cal-detail-empty{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--fog);padding:8px 0}
 .cal-empty{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--fog);padding:40px 0;text-align:center}
+.cal-dn-sun{color:#E53935}
+.cal-sun .cal-dn{color:#E53935}
+.cal-dow:first-child{color:#E53935}
+
+/* 라이트모드: 이전/다음달 칸 회색 */
+body.light .cal-cell.cal-other{background:#F0F4F8}
+body.light .cal-cell.cal-other .cal-dn{color:#B0BEC5}
+
+/* 인쇄 스타일 — 달력만, 흰 배경 */
+@media print{
+  body *{visibility:hidden}
+  #calendar,#calendar *{visibility:visible}
+  #calendar{position:fixed;top:0;left:0;width:100%;background:#fff;color:#000;padding:16px}
+  .cal-month-label{color:#000 !important}
+  .cal-dow{color:#555 !important;background:#f5f5f5 !important}
+  .cal-cell{background:#fff !important;border-color:#ddd !important;min-height:70px}
+  .cal-cell.cal-other{background:#f9f9f9 !important}
+  .cal-dn{color:#000 !important}
+  .cal-dn-sun{color:#E53935 !important}
+  .cal-dow:first-child{color:#E53935 !important}
+  .cal-flags img{width:14px;height:10px}
+  .cal-nav-btn,.cal-today-btn,#cal-detail{display:none !important}
+  .cal-chip{border:1px solid #ccc !important;background:#f5f5f5 !important;color:#333 !important}
+  .cal-chip-dot{display:none}
+}
 
 @media(max-width:760px){
   .cal-cell{min-height:60px;padding:4px 4px 2px}

@@ -402,12 +402,19 @@ dd .dim{opacity:.65}
   /* 하단 탭바 — QUALITY ANALYSIS 탭바와 같은 룩으로, MAP/LIST/HISTORY 전환 */
   .ship-tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:30;
     background:var(--hull);border-top:1px solid var(--line);
-    padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
-  .ship-tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
-    padding:8px 4px;border-radius:8px;color:var(--fog);font-size:10.5px;
-    font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;min-height:52px;justify-content:center}
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .ship-tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+    padding:8px 2px;border-radius:10px;min-height:52px;justify-content:center;
+    font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;
+    color:var(--fog)}
+  .ship-tabbar button svg{width:20px;height:20px;stroke:var(--fog);fill:none;stroke-width:1.8;flex-shrink:0}
+  .ship-tabbar button span{line-height:1}
   .ship-tabbar button.on{color:var(--sail);background:rgba(63,208,166,.10)}
-  .ship-tabbar .ico{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;line-height:1}
+  .ship-tabbar button.on svg{stroke:var(--sail)}
+  .ship-tabbar .tab-admin-mob svg{stroke:#5A7A4A}
+  .ship-tabbar .tab-admin-mob{color:#5A7A4A}
+  .ship-tabbar .tab-admin-mob.on{color:#7FBA63;background:rgba(127,186,99,.10)}
+  .ship-tabbar .tab-admin-mob.on svg{stroke:#7FBA63}
 }
 @media(max-width:900px){
   #qbar .brand{display:none}

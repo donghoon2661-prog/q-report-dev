@@ -1070,6 +1070,8 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
     }
     item.firstSeenEta    = log[0] && log[0].eta    ? log[0].eta    : null;
     item.firstSeenPolDep = log[0] && log[0].polDep ? log[0].polDep : null;
+    item.etaChangeCount    = log.filter(e => Array.isArray(e.changes) && e.changes.some(c => c.field === 'eta' || c.field === 'destEta')).length;
+    item.polDepChangeCount = log.filter(e => Array.isArray(e.changes) && e.changes.some(c => c.field === 'polDep')).length;
 
     /* 이벤트 기반 actual 플래그 — 시간 경과가 아닌 HMM 이벤트 존재 여부로 판단 */
     Object.assign(item, computeActualFlags(item));

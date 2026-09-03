@@ -885,6 +885,7 @@ document.getElementById("force-reload-btn").addEventListener("click", function()
 });
 
 document.addEventListener("DOMContentLoaded",()=>{
+  document.title = `Kossan OQC-DEV ${APP_VERSION}`;
   initTheme();
   /* 모바일: #side 패널 터치 스크롤이 Leaflet 지도로 전파되지 않도록 차단 */
   const sideEl = document.getElementById("side");

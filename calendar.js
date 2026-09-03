@@ -182,10 +182,15 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
              `</div>` +
              `<div class="cal-chip-changed" style="color:${pal.dot};opacity:0.55">1ST CHANGE</div>`;
     }
+    const ord = n => n===1?'1st':n===2?'2nd':n===3?'3rd':n+'th';
+    const etaChg  = ev.type === 'ETA' && ev.item.etaChangeCount > 0
+      ? ` <span class="cal-chip-chg">(${ord(ev.item.etaChangeCount)} change)</span>` : '';
+    const etdChg  = ev.type === 'ETD' && ev.item.polDepChangeCount > 0
+      ? ` <span class="cal-chip-chg">(${ord(ev.item.polDepChangeCount)} change)</span>` : '';
     return `<div class="cal-chip" style="background:${pal.bg};color:${pal.text}">` +
            `<span class="cal-chip-dot" style="background:${pal.dot}"></span>` +
            `<span class="cal-chip-type">${ev.type}</span>` +
-           `<span class="cal-chip-name">${vname}</span></div>`;
+           `<span class="cal-chip-name">${vname}</span>${etaChg}${etdChg}</div>`;
   }).join('');
 
   const cls = ['cal-cell',

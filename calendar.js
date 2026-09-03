@@ -81,17 +81,20 @@ function buildCalendarItems(shipments) {
     if (!cEta && !etd) continue;
     const firstSeen = typeof s.firstSeenEta === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s.firstSeenEta)
       ? s.firstSeenEta.slice(0, 10) : null;
+    const firstPolDep = typeof s.firstSeenPolDep === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s.firstSeenPolDep)
+      ? s.firstSeenPolDep.slice(0, 10) : null;
     items.push({
-      booking:      s.booking,
-      vessel:       s.vessel     || '',
-      voyage:       s.voyage     || null,
-      polDep:       etd,
-      calendarEta:  cEta,
-      firstSeenEta: (firstSeen && firstSeen !== cEta) ? firstSeen : null,
-      eta:          s.eta        ? s.eta.slice(0, 10)     : null,
-      destEta:      s.destEta    ? s.destEta.slice(0, 10) : null,
-      alert:        s.alert      || 'ok',
-      delayDays:    s.delayDays  ?? null
+      booking:         s.booking,
+      vessel:          s.vessel     || '',
+      voyage:          s.voyage     || null,
+      polDep:          etd,
+      firstSeenPolDep: (firstPolDep && firstPolDep !== etd) ? firstPolDep : null,
+      calendarEta:     cEta,
+      firstSeenEta:    (firstSeen && firstSeen !== cEta) ? firstSeen : null,
+      eta:             s.eta        ? s.eta.slice(0, 10)     : null,
+      destEta:         s.destEta    ? s.destEta.slice(0, 10) : null,
+      alert:           s.alert      || 'ok',
+      delayDays:       s.delayDays  ?? null
     });
   }
   return items;
@@ -108,6 +111,7 @@ function buildDateMap(items) {
   };
   for (const it of items) {
     add(it.polDep,       it, 'ETD');
+    add(it.firstSeenPolDep, it, 'FIRST_ETD');
     add(it.calendarEta,  it, 'ETA');
     add(it.firstSeenEta, it, 'FIRST_ETA');
   }
@@ -167,11 +171,12 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
   const chipsHTML = events.map(ev => {
     const pal     = CAL_PALETTE[colorMap[ev.item.booking] ?? 0];
     const vname   = (ev.item.vessel || ev.item.booking).slice(0, 9);
-    const isFirst = ev.type === 'FIRST_ETA';
+    const isFirst = ev.type === 'FIRST_ETA' || ev.type === 'FIRST_ETD';
+    const firstLabel = ev.type === 'FIRST_ETD' ? 'ETD' : 'ETA';
     if (isFirst) {
       return `<div class="cal-chip cal-chip-first" style="background:transparent;color:${pal.dot};border:1px dashed ${pal.dot};opacity:0.55">` +
              `<span class="cal-chip-dot" style="background:${pal.dot}"></span>` +
-             `<span class="cal-chip-name" style="text-decoration:line-through">ETA ${vname}</span>` +
+             `<span class="cal-chip-name" style="text-decoration:line-through">${firstLabel} ${vname}</span>` +
              `</div>` +
              `<div class="cal-chip-changed" style="color:${pal.dot};opacity:0.55">1ST CHANGE</div>`;
     }
@@ -222,6 +227,9 @@ function detailPanelHTML(dateStr, dateMap) {
            delayHTML + `</div>` +
            `<div class="cal-detail-bkg">${it.booking}</div>` +
            `<div class="cal-detail-dates">` +
+           (it.firstSeenPolDep
+             ? `<span><span class="cal-dt-lbl">ORIG ETD</span><s>${fmtCalDate(it.firstSeenPolDep)}</s></span>`
+             : '') +
            `<span><span class="cal-dt-lbl">ETD PKG</span>${fmtCalDate(it.polDep)}</span>` +
            (it.firstSeenEta
              ? `<span><span class="cal-dt-lbl">ORIG ETA</span><s>${fmtCalDate(it.firstSeenEta)}</s></span>`
@@ -245,9 +253,8 @@ function renderCalendar() {
   const firstDay = new Date(calYear, calMonth, 1);
   const lastDay  = new Date(calYear, calMonth + 1, 0);
 
-  /* MON 시작 요일 보정 */
-  let startDow = firstDay.getDay() - 1;
-  if (startDow < 0) startDow = 6;
+  /* SUN 시작 요일 보정 — getDay() 그대로 (0=Sun, 1=Mon ...) */
+  let startDow = firstDay.getDay();
 
   /* 헤더 */
   let html =
@@ -260,7 +267,7 @@ function renderCalendar() {
 
   /* 요일 헤더 + 셀 */
   html += `<div class="cal-grid">`;
-  for (const d of ['MON','TUE','WED','THU','FRI','SAT','SUN'])
+  for (const d of ['SUN','MON','TUE','WED','THU','FRI','SAT'])
     html += `<div class="cal-dow">${d}</div>`;
 
   /* 이전 달 빈 셀 */

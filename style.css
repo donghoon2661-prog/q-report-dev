@@ -759,11 +759,11 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 }
 
 /* ── 노선 텍스트 색상 (SERVICE 필드) ── */
-.svc-confirmed{color:var(--text-primary)}
-.svc-inferred{color:#F2C94C}
-.svc-unknown{color:#EB5757}
-[data-theme="light"] .svc-inferred{color:#B45309}
-[data-theme="light"] .svc-unknown{color:#C62828}
+.svc-confirmed{color:var(--paper)}
+.f span.svc-inferred{color:#F2C94C}
+.f span.svc-unknown{color:#EB5757}
+[data-theme="light"] .f span.svc-inferred{color:#B45309}
+[data-theme="light"] .f span.svc-unknown{color:#C62828}
 
 /* ═══════════════════════════════════════
    CALENDAR 탭 전용 스타일

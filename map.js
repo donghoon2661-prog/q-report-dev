@@ -1,3 +1,61 @@
+/* ── PS3 / PS5 고정 항로 좌표
+   출처: HMM Tracking Map 실제 항로 기반
+   PS3: PKG → SIN → VUNG TAU → YANTIAN → 대만동쪽 → 일본근해 → 태평양 → LA
+   PS5: PKG → SIN → VUNG TAU → HAI PHONG → 중국해안 → 대만해협 → 일본근해 → 태평양 → LA ── */
+const ROUTE_PS3 = [
+  [2.937, 101.301],   /* PORT KLANG */
+  [1.251, 103.727],   /* SINGAPORE */
+  [10.33, 107.07],    /* BA RIA VUNG TAU */
+  [16.0,  111.5],     /* 남중국해 */
+  [22.28, 114.17],    /* YANTIAN, SHENZHEN */
+  [24.0,  119.5],     /* 대만 동쪽 */
+  [28.0,  130.0],     /* 일본 규슈 남쪽 */
+  [35.0,  141.0],     /* 일본 근해 */
+  [40.0,  155.0],     /* 북태평양 진입 */
+  [47.0,  175.0],     /* 북태평양 중간 */
+  [47.0, -170.0],     /* 날짜변경선 통과 */
+  [43.0, -150.0],     /* 태평양 동부 */
+  [36.0, -130.0],     /* LA 접근 */
+  [33.76, -118.27],   /* LOS ANGELES */
+];
+
+const ROUTE_PS5 = [
+  [2.937, 101.301],   /* PORT KLANG */
+  [1.251, 103.727],   /* SINGAPORE */
+  [10.33, 107.07],    /* BA RIA VUNG TAU */
+  [16.5,  107.5],     /* 베트남 해안 북상 */
+  [20.93, 107.08],    /* HAI PHONG */
+  [21.5,  108.5],     /* 통킹만 */
+  [22.5,  113.5],     /* 중국 광둥 해안 */
+  [24.0,  118.0],     /* 대만 해협 */
+  [26.0,  121.5],     /* 대만 북쪽 */
+  [30.0,  130.0],     /* 일본 규슈 */
+  [35.0,  141.0],     /* 일본 근해 */
+  [40.0,  155.0],     /* 북태평양 진입 */
+  [47.0,  175.0],     /* 북태평양 중간 */
+  [47.0, -170.0],     /* 날짜변경선 통과 */
+  [43.0, -150.0],     /* 태평양 동부 */
+  [36.0, -130.0],     /* LA 접근 */
+  [33.76, -118.27],   /* LOS ANGELES */
+];
+
+/* 노선 판별: svc 우선, 없으면 names 기반 추정
+   반환: { svc: 'PS3'|'PS5'|null, inferred: true|false } */
+function detectService(s) {
+  if (s.svc === 'PS3' || s.svc === 'PS5') return { svc: s.svc, inferred: false };
+  const names = Array.isArray(s.names) ? s.names.join(',').toUpperCase() : '';
+  if (names.includes('HAI PHONG')) return { svc: 'PS5', inferred: true };
+  if (names.includes('YANTIAN'))   return { svc: 'PS3', inferred: true };
+  return { svc: null, inferred: false };
+}
+
+/* 노선별 항로 좌표 반환 (경도 래핑 포함) */
+function getServiceRoute(svc) {
+  const r = svc === 'PS3' ? ROUTE_PS3 : svc === 'PS5' ? ROUTE_PS5 : null;
+  if (!r) return null;
+  return r.map(p => p[1] < -30 ? [p[0], p[1] + 360] : p);
+}
+
 /* ===== map.js — 지도 · 좌표 · 위치 계산 ===== */
 
 /* ---------- 안전한 timestamp 파싱 ----------
@@ -112,16 +170,36 @@ function initMap(data){
   const portSeen = {};
   data.shipments.forEach(s=>{
     if(!Array.isArray(s.route) || s.route.length<2){ markers.push(null); return; }
-    const r = s.route.map(wrap);
-    L.polyline(r,{color:'#1E3A4C',weight:s.routeSynth?1:1.5,
-      dashArray:s.routeSynth?'2,8':'4,6',opacity:s.routeSynth?.7:1}).addTo(map);
-    r.forEach((p,k)=>{
-      const key = p[0].toFixed(2)+","+p[1].toFixed(2);
-      if(portSeen[key]) return; portSeen[key]=1;
-      L.circleMarker(p,{radius:4,color:cssVar('--fog','#8AA4B5'),weight:1.5,
-                        fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
-        .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
-    });
+    const det = detectService(s);
+    const svcRoute = det.svc ? getServiceRoute(det.svc) : null;
+
+    if (svcRoute) {
+      /* PS3/PS5 실제 항로 표시 */
+      const lineColor = det.inferred ? '#B8860B' : '#1E3A4C';
+      L.polyline(svcRoute, {
+        color: lineColor, weight: 1.5,
+        dashArray: det.inferred ? '4,4' : null, opacity: 0.9
+      }).addTo(map);
+      /* 기항지 마커 (실제 route 좌표 기반) */
+      const r = s.route.map(wrap);
+      r.forEach((p,k)=>{
+        const key = p[0].toFixed(2)+","+p[1].toFixed(2);
+        if(portSeen[key]) return; portSeen[key]=1;
+        L.circleMarker(p,{radius:4,color:cssVar('--fog','#8AA4B5'),weight:1.5,
+                          fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
+          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
+      });
+    } else {
+      /* UNKNOWN — 항로 라인 없음, 기항지 마커만 */
+      const r = s.route.map(wrap);
+      r.forEach((p,k)=>{
+        const key = p[0].toFixed(2)+","+p[1].toFixed(2);
+        if(portSeen[key]) return; portSeen[key]=1;
+        L.circleMarker(p,{radius:4,color:'#E53935',weight:1.5,
+                          fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
+          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
+      });
+    }
   });
 
   /* 0.05도 이내 같은 위치 → 클러스터링 */

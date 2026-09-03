@@ -778,6 +778,10 @@ function applyRoleRestrictions(){
   if(sysTab) sysTab.style.display = isAdmin ? '' : 'none';
   const betaTab = document.getElementById('tab-beta');
   if(betaTab) betaTab.style.display = isAdmin ? '' : 'none';
+  const mobBetaTab = document.getElementById('tab-mob-beta');
+  const mobSysTab  = document.getElementById('tab-mob-system');
+  if(mobBetaTab) mobBetaTab.style.display = isAdmin ? '' : 'none';
+  if(mobSysTab)  mobSysTab.style.display  = isAdmin ? '' : 'none';
   if(mobileSysBtn) mobileSysBtn.hidden = !isAdmin;
   if(backBtn)    backBtn.style.display    = restricted ? 'none' : '';
   if(qbackBtn)   qbackBtn.style.display   = restricted ? 'none' : '';

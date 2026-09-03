@@ -758,6 +758,16 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
   line-height: 1.4;
 }
 
+/* ── 노선 뱃지 (SERVICE 필드) ── */
+.svc-badge{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;
+  letter-spacing:.08em;padding:2px 7px;border-radius:3px;display:inline-block}
+.svc-confirmed{background:#1A2A1A;color:#6FCF97}
+.svc-inferred{background:#2A2400;color:#F2C94C}
+.svc-unknown{background:#2A1A1A;color:#EB5757}
+[data-theme="light"] .svc-confirmed{background:#E8F5E9;color:#2E7D32}
+[data-theme="light"] .svc-inferred{background:#FFF8E1;color:#F57F17}
+[data-theme="light"] .svc-unknown{background:#FFEBEE;color:#C62828}
+
 /* ═══════════════════════════════════════
    CALENDAR 탭 전용 스타일
    기존 .tab / .btn / table 등 건드리지 않음

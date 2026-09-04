@@ -153,8 +153,69 @@ function locate(s){
   const pos = [a[0] + (b[0]-a[0])*f, a[1] + (b[1]-a[1])*f];
   const atPort = f < 0.01;
   const done = i + f, total = Math.max(1, r.length - 1);
-  return { pos, i, f, names: nm, from: nm[i], to: nm[i+1],
-    phase: atPort ? `${nm[i]} — berthed` : `${nm[i]} → ${nm[i+1]}`, atPort, pct: done / total };
+
+  /* 이벤트 기반 displayPosition 오버라이드 */
+  const disp = getDisplayCoord(s); // null 또는 { coord: [lat,lng], loc: string }
+  const c = disp ? disp.coord : null;
+  const finalPos    = c ? [c[0], c[1] < -30 ? c[1] + 360 : c[1]] : pos;
+  const finalAtPort = c ? true : atPort;
+  const finalPhase  = c
+    ? `${disp.loc} — berthed`
+    : (atPort ? `${nm[i]} — berthed` : `${nm[i]} → ${nm[i+1]}`);
+
+  return { pos: finalPos, i, f, names: nm, from: nm[i], to: nm[i+1],
+    phase: finalPhase, atPort: finalAtPort, pct: done / total };
+}
+
+/* ---------- displayPosition: 이벤트 기반 지도 표시 위치 ----------
+   원본 routePoints는 변경하지 않고 표시 위치만 별도 계산.
+   events를 최신→과거 순으로 탐색하여:
+   - IGNORE  → 건너뜀
+   - ANCHOR  → PORT_COORDS[statusLoc] (없으면 routePoints fallback)
+   - TRANSIT → routePoints
+   위 세 분류 중 어느 것도 없으면 routePoints 사용 */
+
+const PORT_COORDS = {
+  "PORT KLANG,MALAYSIA": [3.0007, 101.3925],   // Westports
+  "SINGAPORE":           [1.2630, 103.7960],   // Pasir Panjang
+  "LOS ANGELES, CA":     [33.7395, -118.2620], // LA항
+};
+
+const EV_ANCHOR = new Set([
+  "Feeder Loading at POL",
+  "Feeder Arrival at T/S Port",
+  "Feeder Discharged at T/S Port",
+  "Vessel Loading at POL",
+  "Vessel Arrival at T/S Port",
+  "Vessel Berthing at T/S Port",
+  "Vessel Loading at T/S Port",
+  "Vessel Discharged at T/S Port",
+  "Vessel Arrival at POD",
+  "Vessel Berthing at POD",
+  "Vessel Discharged at POD",
+]);
+
+const EV_TRANSIT = new Set([
+  "Vessel Departure from POL",
+  "Vessel Departure from T/S Port",
+]);
+
+function getDisplayCoord(s) {
+  const events = Array.isArray(s.events) ? s.events : [];
+  for (const ev of events) {
+    const status = ev.status || "";
+    const loc    = ev.loc    || "";
+    if (EV_ANCHOR.has(status)) {
+      const coord = PORT_COORDS[loc];
+      if (coord) return { coord, loc }; // { coord: [lat,lng], loc: "PORT KLANG,MALAYSIA" 등 }
+      return null; // statusLoc이 PORT_COORDS에 없으면 routePoints fallback
+    }
+    if (EV_TRANSIT.has(status)) {
+      return null; // 출항 이벤트 → routePoints
+    }
+    // IGNORE → 계속 탐색
+  }
+  return null; // events 없거나 위치 이벤트 없음 → routePoints
 }
 
 /* ---------- MAP ---------- */

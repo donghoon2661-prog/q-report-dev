@@ -14,6 +14,7 @@
  * GET  /history[?bkg=]     스케줄 변경 이력
  * GET  /alertstate         마지막 통지 상태
  * POST /notify-test        알림 메일 테스트 발송 (X-Refresh-Key)
+ * GET  /weekly-test         위클리 이메일 테스트 발송 (X-Refresh-Key)
  * GET  /raw?bkg=          원본 응답 진단 (&full=1 → 평문 전체)
  * GET  /debug             접속 진단 (예산·lastrun 포함)
  *
@@ -1825,6 +1826,11 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       return json({ to: env.ALERT_TO || null, from: env.ALERT_FROM || "default",
                     candidates: list.map(s => s.booking), ...res });
     }
+    if (url.pathname === "/weekly-test") {
+      if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+      const r = await sendWeeklyEmail(env);
+      return json({ to: env.ALERT_TO || null, ...r });
+    }
     if (url.pathname === "/delaylog") {
       const bkg = url.searchParams.get("bkg");
       if (!bkg) return new Response(JSON.stringify({ error: "bkg required" }), { status: 400, headers: JH });
@@ -2031,7 +2037,7 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
     }
 
     return json({ error: "Not found",
-      paths: ["/data", "/lookup?bkg=", "/bookings", "/po", "/pcloud?code=", "/history", "/alertstate", "/notify-test", "/collect", "/collect?maps=1", "/backup", "/restore", "/raw?bkg=", "/debug"] }, 404);
+      paths: ["/data", "/lookup?bkg=", "/bookings", "/po", "/pcloud?code=", "/history", "/alertstate", "/notify-test", "/weekly-test", "/collect", "/collect?maps=1", "/backup", "/restore", "/raw?bkg=", "/debug"] }, 404);
   },
 
   /* Cron — 분(minute)으로 종류를 구분한다.

@@ -694,6 +694,304 @@ function diffSchedule(prev, next) {
 }
 
 
+/* ---------- Weekly 이메일 ----------
+   매주 일요일 LA 19:00 발송.
+   이번 주(일~토) + 다음 주(월~일) ETA 부킹을 2주 달력 + 선박 카드로 정리해서 발송.
+   필터: etaActual=false, spDep 있음(BOOKED 제외) */
+
+/* LA 시간 오프셋 (PDT: -7, PST: -8) */
+function laOffset(date) {
+  const jan = new Date(date.getFullYear(), 0, 1);
+  const jul = new Date(date.getFullYear(), 6, 1);
+  const stdOff = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+  return date.getTimezoneOffset() < stdOff ? -7 : -8;
+}
+
+function toLA(date) {
+  const off = laOffset(date);
+  return new Date(date.getTime() + off * 3600000);
+}
+
+function laDateStr(date) {
+  const d = toLA(date);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+}
+
+/* 이번 주 일요일~토요일, 다음 주 월요일~일요일 범위 계산 */
+function weekRange(now) {
+  const la = toLA(now);
+  const dow = la.getUTCDay(); // 0=일
+  // 이번 주 일요일 00:00 LA
+  const thisSun = new Date(Date.UTC(la.getUTCFullYear(), la.getUTCMonth(), la.getUTCDate() - dow));
+  // 이번 주 토요일
+  const thisSat = new Date(thisSun.getTime() + 6 * 86400000);
+  // 다음 주 월요일
+  const nextMon = new Date(thisSun.getTime() + 7 * 86400000);
+  // 다음 주 일요일
+  const nextSun = new Date(thisSun.getTime() + 13 * 86400000);
+
+  const fmt = d => {
+    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+    return `${m} ${d.getUTCDate()}`;
+  };
+  return {
+    week1: { start: thisSun, end: thisSat },
+    week2: { start: nextMon, end: nextSun },
+    label: `Week of ${fmt(thisSun)} – ${fmt(nextSun)}, ${nextSun.getUTCFullYear()}`
+  };
+}
+
+/* 날짜 문자열 비교용 */
+function dateStr(d) {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+}
+
+/* 미국 공휴일 (LA 기준) — holidays.js와 동일 */
+const US_HOLIDAYS_WEEKLY = {
+  "2026-01-01": "New Year's Day",
+  "2026-01-19": "MLK Day",
+  "2026-02-16": "Presidents' Day",
+  "2026-05-25": "Memorial Day",
+  "2026-06-19": "Juneteenth",
+  "2026-07-04": "Independence Day",
+  "2026-09-07": "Labor Day",
+  "2026-11-26": "Thanksgiving",
+  "2026-11-27": "Day after Thanksgiving",
+  "2026-12-25": "Christmas Day",
+  "2027-01-01": "New Year's Day",
+  "2027-01-18": "MLK Day",
+  "2027-02-15": "Presidents' Day",
+  "2027-05-31": "Memorial Day",
+  "2027-06-19": "Juneteenth",
+  "2027-07-04": "Independence Day",
+  "2027-09-06": "Labor Day",
+  "2027-11-25": "Thanksgiving",
+  "2027-11-26": "Day after Thanksgiving",
+  "2027-12-25": "Christmas Day",
+};
+
+/* ETA 날짜 추출 (destEta 우선, 없으면 eta) */
+function getEtaDate(s) {
+  const raw = s.destEta || s.eta;
+  if (!raw) return null;
+  return new Date(raw.length === 10 ? raw + "T00:00:00Z" : raw);
+}
+
+/* 날짜가 범위 안에 있는지 */
+function inRange(d, start, end) {
+  const ds = dateStr(d), ss = dateStr(start), es = dateStr(end);
+  return ds >= ss && ds <= es;
+}
+
+/* 요일명 */
+const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MON_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function fmtEta(d) {
+  const la = toLA(d);
+  return `${MON_SHORT[la.getUTCMonth()]} ${la.getUTCDate()} (${DOW_SHORT[la.getUTCDay()]})`;
+}
+
+/* HTML 생성 */
+function buildWeeklyHtml(shipments, now) {
+  const range = weekRange(now);
+  const { week1, week2, label } = range;
+
+  /* 2주 범위 부킹 필터 */
+  const eligible = shipments.filter(s =>
+    !s.etaActual && s.spDep && !s.staleItem
+  );
+  const week1Ships = eligible.filter(s => {
+    const d = getEtaDate(s); return d && inRange(d, week1.start, week1.end);
+  }).sort((a,b) => (getEtaDate(a)||0) - (getEtaDate(b)||0));
+
+  const week2Ships = eligible.filter(s => {
+    const d = getEtaDate(s); return d && inRange(d, week2.start, week2.end);
+  }).sort((a,b) => (getEtaDate(a)||0) - (getEtaDate(b)||0));
+
+  /* 공휴일 추출 (2주 범위) */
+  const hols = {};
+  for (let i = 0; i <= 13; i++) {
+    const d = new Date(week1.start.getTime() + i * 86400000);
+    const ds = dateStr(d);
+    if (US_HOLIDAYS_WEEKLY[ds]) hols[ds] = US_HOLIDAYS_WEEKLY[ds];
+  }
+
+  /* 달력 셀 생성 */
+  function calCell(d, isWeek2) {
+    const ds = dateStr(d);
+    const la = toLA(d);
+    const dn = la.getUTCDate();
+    const dow = la.getUTCDay();
+    const isSun = dow === 0;
+    const hol = US_HOLIDAYS_WEEKLY[ds];
+
+    // 이 날짜에 ETA인 부킹들
+    const chips = [...week1Ships, ...week2Ships].filter(s => {
+      const ed = getEtaDate(s);
+      return ed && dateStr(ed) === ds;
+    });
+
+    const borderTop = isWeek2 ? 'border-top:2px solid #E5E7EB;' : '';
+    const chipHtml = chips.map(s => {
+      const delay = typeof s.delayDays === 'number' && s.delayDays > 0;
+      const cls = delay ? 'chip-delay' : 'chip-ok';
+      const vesName = (s.vessel || '').replace('HMM ','').split(' ')[0];
+      const suffix = delay ? ` +${s.delayDays}d` : '';
+      return `<div class="cal-chip ${cls}">${esc(vesName)}${suffix}</div>`;
+    }).join('');
+
+    return `<div class="cal-cell" style="${borderTop}">
+      <div class="cal-dn${isSun?' sun':''}">${dn}</div>
+      ${hol ? `<div class="cal-hol">🇺🇸 ${esc(hol)}</div>` : ''}
+      ${chipHtml}
+    </div>`;
+  }
+
+  /* 달력 7일 × 2주 */
+  let calRows = '';
+  for (let i = 0; i < 7; i++) {
+    calRows += calCell(new Date(week1.start.getTime() + i * 86400000), false);
+  }
+  for (let i = 0; i < 7; i++) {
+    calRows += calCell(new Date(week2.start.getTime() + i * 86400000), true);
+  }
+
+  /* 선박 카드 (이번 주만) */
+  function shipCard(s) {
+    const eta = getEtaDate(s);
+    const delay = typeof s.delayDays === 'number' && s.delayDays > 0;
+    const svc = s.svc || '';
+    const badgeCls = svc === 'PS3' ? 'badge-ps3' : svc === 'PS5' ? 'badge-ps5' : 'badge-ps3';
+    const statusHtml = delay
+      ? `<span class="status-delay">+${s.delayDays}d delay</span>`
+      : `<span class="status-ok">On time</span>`;
+    const polDep = s.polDep ? s.polDep.slice(5,7)+'/'+s.polDep.slice(8,10) : '-';
+
+    return `<div class="ship-card">
+      <div class="ship-top">
+        <div>
+          <span class="ship-name">${esc(s.vessel||'')}</span>
+          ${svc ? `<span class="ship-badge ${badgeCls}">${esc(svc)}</span>` : ''}
+        </div>
+        <div>
+          <div class="ship-eta-txt">${eta ? fmtEta(eta) : '-'}</div>
+          <div>${statusHtml}</div>
+        </div>
+      </div>
+      <div class="ship-meta">
+        <span>📦 ${esc(s.booking||'')}</span>
+        <span>🚢 ${esc(s.voyage||'')}</span>
+        <span>ETD ${polDep}</span>
+      </div>
+    </div>`;
+  }
+
+  /* 공휴일 섹션 */
+  const holEntries = Object.entries(hols);
+  const holSection = holEntries.length ? `
+    <div class="section-label">US holidays this week</div>
+    ${holEntries.map(([ds, name]) => {
+      const d = new Date(ds + 'T00:00:00Z');
+      const dow = DOW_SHORT[d.getUTCDay()];
+      const mon = MON_SHORT[d.getUTCMonth()];
+      return `<div class="hol-row">🇺🇸&nbsp; ${mon} ${d.getUTCDate()} (${dow}) — ${esc(name)}</div>`;
+    }).join('')}
+    <div class="divider"></div>` : '';
+
+  /* 이번 주 선박 섹션 */
+  const week1Label = week1Ships.length
+    ? `<div class="section-label">ETA this week — ${week1Ships.length} vessel${week1Ships.length>1?'s':''}</div>
+       ${week1Ships.map(shipCard).join('')}`
+    : `<div class="section-label">ETA this week</div>
+       <p style="font-size:13px;color:#9CA3AF;margin-bottom:16px">No arrivals scheduled this week.</p>`;
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Weekly Shipment Schedule</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F3F4F6;padding:32px 16px}
+.wrap{max-width:600px;margin:0 auto}
+.email-shell{border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.email-header{background:#07141C;padding:24px 32px}
+.email-logo{font-family:monospace;font-size:13px;color:#3FD0A6;letter-spacing:.1em}
+.email-title{font-size:24px;font-weight:500;color:#fff;margin-top:6px}
+.email-sub{font-size:12px;color:#8AA4B5;margin-top:4px}
+.email-body{padding:28px 32px;background:#fff}
+.section-label{font-size:11px;font-weight:600;color:#9CA3AF;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
+.hol-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;margin-bottom:5px}
+.divider{height:1px;background:#F3F4F6;margin:20px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:24px}
+.cal-dow{padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#9CA3AF;background:#F9FAFB;border-bottom:1px solid #E5E7EB;letter-spacing:.06em}
+.cal-dow.sun{color:#DC2626}
+.cal-cell{min-height:72px;padding:6px 5px;border-right:1px solid #E5E7EB;display:flex;flex-direction:column;gap:3px}
+.cal-cell:last-child{border-right:none}
+.cal-dn{font-size:12px;font-weight:500;color:#374151;margin-bottom:2px}
+.cal-dn.sun{color:#DC2626}
+.cal-hol{font-size:9px;color:#9CA3AF;line-height:1.3}
+.cal-chip{padding:2px 5px;border-radius:3px;font-size:9px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.chip-ok{background:#DCFCE7;color:#15803D}
+.chip-delay{background:#FEF2F2;color:#DC2626}
+.ship-card{border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:10px}
+.ship-card:last-child{margin-bottom:0}
+.ship-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.ship-name{font-size:15px;font-weight:500;color:#111}
+.ship-badge{display:inline-block;font-size:10px;padding:1px 7px;border-radius:3px;margin-left:6px;vertical-align:middle}
+.badge-ps3{background:#EFF6FF;color:#1D4ED8}
+.badge-ps5{background:#F0FDF4;color:#166534}
+.ship-eta-txt{font-size:13px;font-weight:500;color:#059669;text-align:right}
+.status-ok{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:#F0FDF4;color:#16A34A;margin-top:4px}
+.status-delay{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:#FEF2F2;color:#DC2626;margin-top:4px}
+.ship-meta{display:flex;gap:14px;font-size:12px;color:#6B7280;flex-wrap:wrap}
+.email-footer{padding:16px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:11px;color:#9CA3AF;text-align:center;line-height:1.6}
+</style></head><body>
+<div class="wrap"><div class="email-shell">
+  <div class="email-header">
+    <div class="email-logo">INTELLIGENCE TEAM NOTICE</div>
+    <div class="email-title">Weekly Shipment Schedule</div>
+    <div class="email-sub">${esc(label)} &nbsp;·&nbsp; Los Angeles time</div>
+  </div>
+  <div class="email-body">
+    ${holSection}
+    <div class="section-label">2-week schedule</div>
+    <div class="cal-grid">
+      <div class="cal-dow sun">SUN</div>
+      <div class="cal-dow">MON</div>
+      <div class="cal-dow">TUE</div>
+      <div class="cal-dow">WED</div>
+      <div class="cal-dow">THU</div>
+      <div class="cal-dow">FRI</div>
+      <div class="cal-dow">SAT</div>
+      ${calRows}
+    </div>
+    ${week1Label}
+  </div>
+  <div class="email-footer">
+    Intelligence Team Notice &nbsp;·&nbsp; Auto-generated every Sunday 19:00 LA time &nbsp;·&nbsp; Do not reply
+  </div>
+</div></div>
+</body></html>`;
+}
+
+async function sendWeeklyEmail(env) {
+  if (!env.RESEND_KEY || !env.ALERT_TO) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };
+
+  const saved = await getSaved(env);
+  if (!saved || !Array.isArray(saved.shipments)) return { skipped: "shipments 없음" };
+
+  const now = new Date();
+  const html = buildWeeklyHtml(saved.shipments, now);
+
+  const range = weekRange(now);
+  const la = toLA(now);
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][la.getUTCMonth()];
+  const subject = `Weekly Shipment Schedule — ${mon} ${la.getUTCDate()}, ${la.getUTCFullYear()}`;
+
+  return await sendMail(env, subject, html);
+}
+
+
 /* ---------- 이메일 알림 ----------
    Cloudflare Workers는 자체 발송 기능이 없어 Resend HTTP API를 쓴다.
    설정: secret RESEND_KEY, var ALERT_TO(쉼표 구분 가능), var ALERT_FROM(선택) */
@@ -1739,15 +2037,32 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
   /* Cron — 분(minute)으로 종류를 구분한다.
      일정 수집:   0 *\/3 * * *      (3시간마다 정각, 하루 8회)
      지도 수집:  10 *\/3 * * *      (3시간마다 10분, 하루 8회)
-     stale retry: 15,45 * * * *   (매 시 15분·45분, 하루 40회) */
+     stale retry: 15,45 * * * *   (매 시 15분·45분, 하루 40회)
+     weekly 메일:  0 3 * * 1       (매주 일요일 LA 19:00 PST / 20:00 PDT) */
   async scheduled(evt, env, ctx) {
     const cron = evt.cron || "";
     const cronMin = parseInt((cron.match(/^\s*(\d+)/) || [])[1] ?? "99", 10);
-    const isMaps = cronMin === 10;
-    const isStaleRetry = cronMin === 15 || cronMin === 45;
-    const trigger = isMaps ? "cron-maps" : isStaleRetry ? "cron-stale" : "cron";
+    const isWeekly = cronMin === 0 && /0\s+3\s+\*\s+\*\s+1/.test(cron);
+    const isMaps = !isWeekly && cronMin === 10;
+    const isStaleRetry = !isWeekly && (cronMin === 15 || cronMin === 45);
+    const trigger = isWeekly ? "cron-weekly" : isMaps ? "cron-maps" : isStaleRetry ? "cron-stale" : "cron";
 
     ctx.waitUntil((async () => {
+
+      /* ── weekly 이메일 ── */
+      if (isWeekly) {
+        try {
+          const r = await sendWeeklyEmail(env);
+          await env.OQC.put("lastrun", JSON.stringify({
+            at: stampNow(), trigger, cron, ok: true, weekly: r
+          }));
+        } catch(e) {
+          await env.OQC.put("lastrun", JSON.stringify({
+            at: stampNow(), trigger, cron, ok: false, error: String(e?.message || e)
+          }));
+        }
+        return;
+      }
 
       /* ── stale retry ── */
       if (isStaleRetry) {

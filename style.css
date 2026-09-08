@@ -769,7 +769,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
    CALENDAR 탭 전용 스타일
    기존 .tab / .btn / table 등 건드리지 않음
    ═══════════════════════════════════════ */
-#calendar{padding:0 0 60px;overflow-x:auto}
+#calendar{padding:0 0 60px}
 .cal-top{display:flex;align-items:center;gap:10px;margin:18px 0 16px}
 .cal-month-label{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:600;letter-spacing:.06em;color:var(--paper);flex:1}
 .cal-nav-btn{background:none;border:1px solid var(--line);color:var(--fog);padding:5px 11px;font-size:12px;cursor:pointer;border-radius:2px}
@@ -777,8 +777,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .cal-today-btn{background:none;border:1px solid var(--line);color:var(--fog);padding:5px 11px;font-size:11px;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;cursor:pointer;border-radius:2px}
 .cal-today-btn:hover{border-color:var(--fog);color:var(--paper)}
 
-.cal-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);min-width:560px;border:1px solid var(--line);background:var(--line)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);background:var(--line)}
 .cal-dow{padding:7px 4px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--fog);background:var(--hull);gap:1px}
 .cal-cell{min-height:86px;padding:6px 6px 4px;background:var(--ink);cursor:pointer;transition:background .1s;display:flex;flex-direction:column;gap:2px}
 .cal-cell:hover{background:var(--hull)}
@@ -841,7 +840,9 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 }
 
 @media(max-width:760px){
-  .cal-cell{min-height:60px;padding:4px 4px 2px}
+  .cal-cell{min-height:60px;padding:4px 2px 2px}
+  .cal-dow{font-size:8px;padding:4px 0}
+  .cal-chip{font-size:8px;padding:1px 3px}
   .cal-chip{font-size:8.5px;padding:1px 4px}
   .cal-chip-name{display:none}
   .cal-month-label{font-size:18px}

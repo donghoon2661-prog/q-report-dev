@@ -976,9 +976,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 }
 
 async function sendWeeklyEmail(env) {
-  if (!env.ALERT_TO_WEEKLY) return { skipped: "ALERT_TO_WEEKLY 미설정" };
-  if (!env.GMAIL_CLIENT_ID || !env.GMAIL_CLIENT_SECRET || !env.GMAIL_REFRESH_TOKEN)
-    return { skipped: "Gmail OAuth 환경변수 미설정" };
+  if (!env.RESEND_KEY || !env.ALERT_TO) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };
 
   const saved = await getSaved(env);
   if (!saved || !Array.isArray(saved.shipments)) return { skipped: "shipments 없음" };
@@ -991,69 +989,22 @@ async function sendWeeklyEmail(env) {
   const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][la.getUTCMonth()];
   const subject = `Weekly Shipment Schedule — ${mon} ${la.getUTCDate()}, ${la.getUTCFullYear()}`;
 
-  return await sendMail(env, subject, html, "ALERT_TO_WEEKLY");
+  return await sendMail(env, subject, html);
 }
 
 
 /* ---------- 이메일 알림 ----------
    Cloudflare Workers는 자체 발송 기능이 없어 Resend HTTP API를 쓴다.
    설정: secret RESEND_KEY, var ALERT_TO(쉼표 구분 가능), var ALERT_FROM(선택) */
-/* Gmail API OAuth 방식 이메일 발송
-   환경변수: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
-   수신자: ALERT_TO_DELAY (지연알림), ALERT_TO_WEEKLY (위클리) */
-
-async function getGmailAccessToken(env) {
-  const r = await fetch("https://oauth2.googleapis.com/token", {
+async function sendMail(env, subject, html) {
+  if (!env.RESEND_KEY || !env.ALERT_TO) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };
+  const to = String(env.ALERT_TO).split(",").map(x => x.trim()).filter(Boolean);
+  const from = env.ALERT_FROM || "Kossan OQC <onboarding@resend.dev>";
+  const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id:     env.GMAIL_CLIENT_ID,
-      client_secret: env.GMAIL_CLIENT_SECRET,
-      refresh_token: env.GMAIL_REFRESH_TOKEN,
-      grant_type:    "refresh_token"
-    })
+    headers: { "Authorization": "Bearer " + env.RESEND_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to, subject, html })
   });
-  if (!r.ok) throw new Error("Gmail token failed: " + (await r.text()).slice(0, 200));
-  const d = await r.json();
-  return d.access_token;
-}
-
-async function sendMail(env, subject, html, toKey) {
-  /* toKey: "ALERT_TO_DELAY" | "ALERT_TO_WEEKLY" */
-  const toRaw = env[toKey || "ALERT_TO_DELAY"];
-  if (!toRaw) return { skipped: (toKey || "ALERT_TO_DELAY") + " 미설정" };
-  if (!env.GMAIL_CLIENT_ID || !env.GMAIL_CLIENT_SECRET || !env.GMAIL_REFRESH_TOKEN)
-    return { skipped: "Gmail OAuth 환경변수 미설정" };
-
-  const to = String(toRaw).split(",").map(x => x.trim()).filter(Boolean);
-  const from = "Kossan OQC <intelligence.team.notice@gmail.com>";
-
-  const accessToken = await getGmailAccessToken(env);
-
-  /* RFC 2822 메시지 생성 */
-  const boundary = "boundary_" + Date.now();
-  const msg = [
-    "MIME-Version: 1.0",
-    "From: " + from,
-    "To: " + to.join(", "),
-    "Subject: " + subject,
-    "Content-Type: text/html; charset=UTF-8",
-    "",
-    html
-  ].join("\r\n");
-
-  const encoded = btoa(unescape(encodeURIComponent(msg)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-  const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + accessToken,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ raw: encoded })
-  });
-
   if (!r.ok) return { error: "Mail send failed " + r.status + " " + (await r.text()).slice(0, 200) };
   return { ok: true };
 }
@@ -1127,7 +1078,7 @@ async function notifyIfNeeded(env, payload) {
   if (!targets.length) return { sent: 0 };
   const worst = targets.some(s => s.alert === "alert") ? "Alert" : "Notice";
   const subject = `[${worst}] HMM Shipment Delay — ${targets.length} booking(s): ${targets.map(s => s.booking).join(", ")}`;
-  const res = await sendMail(env, subject, mailBody(targets, payload.updated), "ALERT_TO_DELAY");
+  const res = await sendMail(env, subject, mailBody(targets, payload.updated));
   return { sent: res.ok ? targets.length : 0, bookings: targets.map(s => s.booking), ...res };
 }
 
@@ -1172,7 +1123,7 @@ async function notifyArrivalIfNeeded(env, payload) {
   if (!targets.length) return { sent: 0 };
 
   const subject = `[Arrived] HMM Shipment Arrived — ${targets.length} booking(s): ${targets.map(s => s.booking).join(", ")}`;
-  const res = await sendMail(env, subject, arrivalMailBody(targets, payload.updated), "ALERT_TO_DELAY");
+  const res = await sendMail(env, subject, arrivalMailBody(targets, payload.updated));
 
   if (res.ok) {
     /* arrivalMailSent 플래그를 KV shipments에 반영 */
@@ -1871,14 +1822,14 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       const list = (saved && saved.shipments || []).filter(s => s.alert && s.alert !== "ok");
       const res = await sendMail(env, "[TEST] HMM 선적 지연 알림 테스트",
         mailBody(list.length ? list : (saved && saved.shipments || []).slice(0, 2),
-                 (saved && saved.updated) || "-"), "ALERT_TO_DELAY");
-      return json({ to: env.ALERT_TO_DELAY || null, from: "intelligence.team.notice@gmail.com",
+                 (saved && saved.updated) || "-"));
+      return json({ to: env.ALERT_TO || null, from: env.ALERT_FROM || "default",
                     candidates: list.map(s => s.booking), ...res });
     }
     if (url.pathname === "/weekly-test") {
       if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
       const r = await sendWeeklyEmail(env);
-      return json({ to: env.ALERT_TO_WEEKLY || null, ...r });
+      return json({ to: env.ALERT_TO || null, ...r });
     }
     if (url.pathname === "/delaylog") {
       const bkg = url.searchParams.get("bkg");

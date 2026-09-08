@@ -286,7 +286,7 @@ function renderCalendar() {
     `</div>`;
 
   /* 요일 헤더 + 셀 */
-  html += `<div class="cal-grid">`;
+  html += `<div class="cal-wrap"><div class="cal-grid">`;
   for (const d of ['SUN','MON','TUE','WED','THU','FRI','SAT'])
     html += `<div class="cal-dow">${d}</div>`;
 
@@ -316,7 +316,7 @@ function renderCalendar() {
     html += cellHTML(ds, d, true, dateMap);
   }
 
-  html += `</div>`;
+  html += `</div></div>`;
   html += detailPanelHTML(calSelected, dateMap);
   wrap.innerHTML = html;
 }

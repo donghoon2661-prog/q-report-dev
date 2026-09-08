@@ -818,13 +818,12 @@ function buildWeeklyHtml(shipments, now) {
     if (US_HOLIDAYS_WEEKLY[ds]) hols[ds] = US_HOLIDAYS_WEEKLY[ds];
   }
 
-  /* 달력 셀 생성 (table td 방식 — 이메일 클라이언트 호환) */
+  /* 달력 셀 생성 — 완전 인라인 스타일 */
   function calCell(d, isWeek2) {
     const ds = dateStr(d);
     const la = toLA(d);
     const dn = la.getUTCDate();
-    const dow = la.getUTCDay();
-    const isSun = dow === 0;
+    const isSun = la.getUTCDay() === 0;
     const hol = US_HOLIDAYS_WEEKLY[ds];
 
     const chips = [...week1Ships, ...week2Ships].filter(s => {
@@ -836,21 +835,20 @@ function buildWeeklyHtml(shipments, now) {
     const chipHtml = chips.map(s => {
       const delay = typeof s.delayDays === 'number' && s.delayDays > 0;
       const bg = delay ? '#FEF2F2' : '#DCFCE7';
-      const color = delay ? '#DC2626' : '#15803D';
+      const col = delay ? '#DC2626' : '#15803D';
       const vesName = (s.vessel || '').replace('HMM ','').split(' ')[0];
       const suffix = delay ? ` +${s.delayDays}d` : '';
-      return `<div style="padding:2px 5px;border-radius:3px;font-size:9px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;background:${bg};color:${color};margin-bottom:2px">${esc(vesName)}${suffix}</div>`;
+      return `<div style="padding:2px 5px;border-radius:3px;font-size:9px;font-weight:bold;line-height:1.4;background:${bg};color:${col};margin-bottom:2px;overflow:hidden">${esc(vesName)}${suffix}</div>`;
     }).join('');
 
     const dnColor = isSun ? '#DC2626' : '#374151';
-    return `<td width="14%" style="width:14%;vertical-align:top;padding:6px 5px;border-right:1px solid #E5E7EB;min-height:72px;${borderTop}">
-      <div style="font-size:12px;font-weight:500;color:${dnColor};margin-bottom:2px">${dn}</div>
-      ${hol ? `<div style="font-size:9px;color:#9CA3AF;line-height:1.3;margin-bottom:2px">🇺🇸 ${esc(hol)}</div>` : ''}
+    return `<td width="14%" style="width:14%;vertical-align:top;padding:6px 5px;border-right:1px solid #E5E7EB;${borderTop}">
+      <div style="font-size:12px;font-weight:bold;color:${dnColor};margin-bottom:2px">${dn}</div>
+      ${hol ? `<div style="font-size:9px;color:#9CA3AF;line-height:1.3;margin-bottom:2px">&#127482;&#127480; ${esc(hol)}</div>` : ''}
       ${chipHtml}
     </td>`;
   }
 
-  /* 달력 7일 × 2주 — table 방식 */
   function calRow(startDate, isWeek2) {
     let cells = '';
     for (let i = 0; i < 7; i++) {
@@ -860,116 +858,108 @@ function buildWeeklyHtml(shipments, now) {
   }
   const calRows = calRow(week1.start, false) + calRow(week2.start, true);
 
-  /* 선박 카드 (이번 주만) */
+  /* 선박 카드 — 완전 인라인 스타일 */
   function shipCard(s) {
     const eta = getEtaDate(s);
     const delay = typeof s.delayDays === 'number' && s.delayDays > 0;
     const svc = s.svc || '';
-    const badgeCls = svc === 'PS3' ? 'badge-ps3' : svc === 'PS5' ? 'badge-ps5' : 'badge-ps3';
-    const statusHtml = delay
-      ? `<span class="status-delay">+${s.delayDays}d delay</span>`
-      : `<span class="status-ok">On time</span>`;
+    const badgeBg = svc === 'PS5' ? '#F0FDF4' : '#EFF6FF';
+    const badgeCol = svc === 'PS5' ? '#166534' : '#1D4ED8';
+    const statusBg = delay ? '#FEF2F2' : '#F0FDF4';
+    const statusCol = delay ? '#DC2626' : '#16A34A';
+    const statusTxt = delay ? `+${s.delayDays}d delay` : 'On time';
     const polDep = s.polDep ? s.polDep.slice(5,7)+'/'+s.polDep.slice(8,10) : '-';
 
-    return `<div class="ship-card">
-      <div class="ship-top">
-        <div>
-          <span class="ship-name">${esc(s.vessel||'')}</span>
-          ${svc ? `<span class="ship-badge ${badgeCls}">${esc(svc)}</span>` : ''}
-        </div>
-        <div>
-          <div class="ship-eta-txt">${eta ? fmtEta(eta) : '-'}</div>
-          <div>${statusHtml}</div>
-        </div>
-      </div>
-      <div class="ship-meta">
-        <span>📦 ${esc(s.booking||'')}</span>
-        <span>🚢 ${esc(s.voyage||'')}</span>
-        <span>ETD ${polDep}</span>
-      </div>
-    </div>`;
+    return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;border-radius:8px;margin-bottom:10px">
+      <tr>
+        <td style="padding:14px 16px">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:10px">
+            <tr>
+              <td style="vertical-align:top">
+                <span style="font-size:15px;font-weight:bold;color:#111">${esc(s.vessel||'')}</span>
+                ${svc ? `<span style="display:inline-block;font-size:10px;padding:1px 7px;border-radius:3px;margin-left:6px;vertical-align:middle;background:${badgeBg};color:${badgeCol}">${esc(svc)}</span>` : ''}
+              </td>
+              <td style="vertical-align:top;text-align:right">
+                <div style="font-size:13px;font-weight:bold;color:#059669">${eta ? fmtEta(eta) : '-'}</div>
+                <div style="display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:${statusBg};color:${statusCol};margin-top:4px">${statusTxt}</div>
+              </td>
+            </tr>
+          </table>
+          <div style="font-size:12px;color:#6B7280">
+            &#128230; ${esc(s.booking||'')} &nbsp;&nbsp; &#128674; ${esc(s.voyage||'')} &nbsp;&nbsp; ETD ${polDep}
+          </div>
+        </td>
+      </tr>
+    </table>`;
   }
 
   /* 공휴일 섹션 */
   const holEntries = Object.entries(hols);
   const holSection = holEntries.length ? `
-    <div style="font-size:11px;font-weight:600;color:#9CA3AF;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px">US HOLIDAYS THIS WEEK</div>
+    <div style="font-size:11px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">US HOLIDAYS THIS WEEK</div>
     ${holEntries.map(([ds, name]) => {
       const d = new Date(ds + 'T00:00:00Z');
       const dow = DOW_SHORT[d.getUTCDay()];
       const mon = MON_SHORT[d.getUTCMonth()];
-      return `<div class="hol-row">🇺🇸&nbsp; ${mon} ${d.getUTCDate()} (${dow}) — ${esc(name)}</div>`;
+      return `<div style="font-size:13px;color:#374151;margin-bottom:5px">&#127482;&#127480; ${mon} ${d.getUTCDate()} (${dow}) &mdash; ${esc(name)}</div>`;
     }).join('')}
-    <div class="divider"></div>` : '';
+    <div style="height:1px;background:#F3F4F6;margin:20px 0"></div>` : '';
 
   /* 이번 주 선박 섹션 */
   const week1Label = week1Ships.length
-    ? `<div style="font-size:11px;font-weight:600;color:#9CA3AF;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px">ETA THIS WEEK — ${week1Ships.length} VESSEL${week1Ships.length>1?'S':''}</div>
+    ? `<div style="font-size:11px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">ETA THIS WEEK &mdash; ${week1Ships.length} VESSEL${week1Ships.length>1?'S':''}</div>
        ${week1Ships.map(shipCard).join('')}`
-    : `<div style="font-size:11px;font-weight:600;color:#9CA3AF;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px">ETA THIS WEEK</div>
+    : `<div style="font-size:11px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">ETA THIS WEEK</div>
        <p style="font-size:13px;color:#9CA3AF;margin-bottom:16px">No arrivals scheduled this week.</p>`;
 
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Weekly Shipment Schedule</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F3F4F6;padding:32px 16px}
-.wrap{max-width:600px;margin:0 auto}
-.email-shell{border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08)}
-.email-header{background:#07141C;padding:24px 32px}
-.email-logo{font-family:monospace;font-size:13px;color:#3FD0A6;letter-spacing:.1em}
-.email-title{font-size:24px;font-weight:500;color:#fff;margin-top:6px}
-.email-sub{font-size:12px;color:#8AA4B5;margin-top:4px}
-.email-body{padding:28px 32px;background:#fff}
-.section-label{font-size:11px;font-weight:600;color:#9CA3AF;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
-.hol-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;margin-bottom:5px}
-.divider{height:1px;background:#F3F4F6;margin:20px 0}
-.cal-chip{padding:2px 5px;border-radius:3px;font-size:9px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
-.chip-ok{background:#DCFCE7;color:#15803D}
-.chip-delay{background:#FEF2F2;color:#DC2626}
-.ship-card{border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:10px}
-.ship-card:last-child{margin-bottom:0}
-.ship-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
-.ship-name{font-size:15px;font-weight:500;color:#111}
-.ship-badge{display:inline-block;font-size:10px;padding:1px 7px;border-radius:3px;margin-left:6px;vertical-align:middle}
-.badge-ps3{background:#EFF6FF;color:#1D4ED8}
-.badge-ps5{background:#F0FDF4;color:#166534}
-.ship-eta-txt{font-size:13px;font-weight:500;color:#059669;text-align:right}
-.status-ok{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:#F0FDF4;color:#16A34A;margin-top:4px}
-.status-delay{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:#FEF2F2;color:#DC2626;margin-top:4px}
-.ship-meta{display:flex;gap:14px;font-size:12px;color:#6B7280;flex-wrap:wrap}
-.email-footer{padding:16px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:11px;color:#9CA3AF;text-align:center;line-height:1.6}
-</style></head><body>
-<div class="wrap"><div class="email-shell">
-  <div class="email-header">
-    <div class="email-logo">INTELLIGENCE TEAM NOTICE</div>
-    <div class="email-title">Weekly Shipment Schedule</div>
-    <div class="email-sub">${esc(label)} &nbsp;·&nbsp; Los Angeles time</div>
-  </div>
-  <div class="email-body">
-    ${holSection}
-    <div style="font-size:11px;font-weight:600;color:#9CA3AF;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px">2-WEEK SCHEDULE</div>
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;margin-bottom:24px;table-layout:fixed">
-      <tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
-        <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#DC2626;letter-spacing:.06em;border-right:1px solid #E5E7EB">SUN</th>
-        <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:.06em;border-right:1px solid #E5E7EB">MON</th>
-        <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:.06em;border-right:1px solid #E5E7EB">TUE</th>
-        <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:.06em;border-right:1px solid #E5E7EB">WED</th>
-        <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:.06em;border-right:1px solid #E5E7EB">THU</th>
-        <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:.06em;border-right:1px solid #E5E7EB">FRI</th>
-        <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:.06em">SAT</th>
-      </tr>
-      ${calRows}
-    </table>
-    ${week1Label}
-  </div>
-  <div class="email-footer">
-    Intelligence Team Notice &nbsp;·&nbsp; Auto-generated every Sunday 19:00 LA time &nbsp;·&nbsp; Do not reply
-  </div>
-</div></div>
-</body></html>`;
+</head>
+<body style="margin:0;padding:32px 16px;background:#F3F4F6;font-family:Arial,Helvetica,sans-serif">
+<table width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px;max-width:600px;margin:0 auto;border-radius:12px;overflow:hidden;background:#ffffff">
+  <!-- 헤더 -->
+  <tr>
+    <td style="background:#07141C;padding:24px 32px">
+      <div style="font-family:monospace;font-size:13px;color:#3FD0A6;letter-spacing:1px">INTELLIGENCE TEAM NOTICE</div>
+      <div style="font-size:24px;font-weight:bold;color:#ffffff;margin-top:6px">Weekly Shipment Schedule</div>
+      <div style="font-size:12px;color:#8AA4B5;margin-top:4px">${esc(label)} &nbsp;&middot;&nbsp; Los Angeles time</div>
+    </td>
+  </tr>
+  <!-- 바디 -->
+  <tr>
+    <td style="padding:28px 32px;background:#ffffff">
+      ${holSection}
+      <div style="font-size:11px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">2-WEEK SCHEDULE</div>
+      <table width="100%" cellpadding="0" cellspacing="0" border="1" style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;margin-bottom:24px;table-layout:fixed">
+        <tr style="background:#F9FAFB">
+          <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#DC2626;letter-spacing:1px;border:1px solid #E5E7EB">SUN</th>
+          <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;border:1px solid #E5E7EB">MON</th>
+          <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;border:1px solid #E5E7EB">TUE</th>
+          <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;border:1px solid #E5E7EB">WED</th>
+          <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;border:1px solid #E5E7EB">THU</th>
+          <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;border:1px solid #E5E7EB">FRI</th>
+          <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;border:1px solid #E5E7EB">SAT</th>
+        </tr>
+        ${calRows}
+      </table>
+      ${week1Label}
+    </td>
+  </tr>
+  <!-- 푸터 -->
+  <tr>
+    <td style="padding:16px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:11px;color:#9CA3AF;text-align:center;line-height:1.6">
+      Intelligence Team Notice &nbsp;&middot;&nbsp; Auto-generated every Sunday 19:00 LA time &nbsp;&middot;&nbsp; Do not reply
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
 }
+
 
 async function sendWeeklyEmail(env) {
   if (!env.RESEND_KEY || !env.ALERT_TO) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };

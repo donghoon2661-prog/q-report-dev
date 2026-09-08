@@ -769,7 +769,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
    CALENDAR 탭 전용 스타일
    기존 .tab / .btn / table 등 건드리지 않음
    ═══════════════════════════════════════ */
-#calendar{padding:0 0 60px}
+#calendar{padding:0 0 60px;overflow-x:auto}
 .cal-top{display:flex;align-items:center;gap:10px;margin:18px 0 16px}
 .cal-month-label{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:600;letter-spacing:.06em;color:var(--paper);flex:1}
 .cal-nav-btn{background:none;border:1px solid var(--line);color:var(--fog);padding:5px 11px;font-size:12px;cursor:pointer;border-radius:2px}

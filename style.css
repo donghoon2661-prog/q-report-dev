@@ -777,7 +777,8 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .cal-today-btn{background:none;border:1px solid var(--line);color:var(--fog);padding:5px 11px;font-size:11px;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;cursor:pointer;border-radius:2px}
 .cal-today-btn:hover{border-color:var(--fog);color:var(--paper)}
 
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);background:var(--line)}
+.cal-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);min-width:560px;border:1px solid var(--line);background:var(--line)}
 .cal-dow{padding:7px 4px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--fog);background:var(--hull);gap:1px}
 .cal-cell{min-height:86px;padding:6px 6px 4px;background:var(--ink);cursor:pointer;transition:background .1s;display:flex;flex-direction:column;gap:2px}
 .cal-cell:hover{background:var(--hull)}

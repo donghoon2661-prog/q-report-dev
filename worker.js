@@ -380,6 +380,55 @@ function hasPodDischarged(s) {
   });
 }
 
+/* ---------- 사후 추적 (하역 이후) 판정 ----------
+   하역(Vessel Discharged at POD) 이후에도 반출(Import Truck Gate Out)과
+   공컨 반납(Import Empty Container Returned)까지 계속 수집하기 위한 기준.
+   parseBooking이 이미 해당 이벤트를 파싱하고 있어 파서 수정은 불필요하다.
+   hasPodDischarged()는 기존 의미(etaActual/delay/지도)를 그대로 유지한다. */
+const POST_ARRIVAL_MAX_D = 14;   /* 반납 이벤트가 끝내 안 올라올 때의 안전장치 */
+const DELETE_GRACE_D     = 3;    /* 완료 확정 후 bookings 유지 기간 (기존 3일 유예 그대로) */
+
+/* POD에서 발생한 특정 이벤트의 시각 문자열 반환 (없으면 null) */
+function podEventAt(s, kw) {
+  const pod = String(s.pod || "").toUpperCase().trim();
+  if (!pod) return null;
+  const hit = (s.events || []).find(e => {
+    const status = String(e.status || "").toUpperCase();
+    const loc    = String(e.loc    || "").toUpperCase().trim();
+    return status.includes(kw) && loc === pod;
+  });
+  return hit ? hit.at : null;
+}
+
+const podDischargedAt = s => podEventAt(s, "DISCHARG");
+const emptyReturnedAt = s => podEventAt(s, "EMPTY CONTAINER RETURNED");
+
+/* 기존 delayCompletedAt 정규화와 동일한 방식 */
+function evMs(at) {
+  if (!at) return NaN;
+  const norm = at.length <= 10 ? at + "T00:00:00Z"
+             : at.replace(" ", "T") + (at.includes("Z") ? "" : "Z");
+  return Date.parse(norm);
+}
+
+/* 스케줄 수집 종료 기준 — 공컨 반납 확인 또는 하역 후 14일 경과 */
+function isFullyCompleted(s) {
+  if (emptyReturnedAt(s)) return true;
+  const d = evMs(podDischargedAt(s));
+  return Number.isFinite(d) && (Date.now() - d) >= POST_ARRIVAL_MAX_D * 86400000;
+}
+
+/* bookings 삭제 예정 시각(ms). 하역 이벤트가 없으면 NaN → 삭제 대상 아님
+     반납 있음: 반납 + 3일
+     반납 없음: 하역 + 14일 + 3일 */
+function deleteDueMs(s) {
+  const r = evMs(emptyReturnedAt(s));
+  if (Number.isFinite(r)) return r + DELETE_GRACE_D * 86400000;
+  const d = evMs(podDischargedAt(s));
+  if (Number.isFinite(d)) return d + (POST_ARRIVAL_MAX_D + DELETE_GRACE_D) * 86400000;
+  return NaN;
+}
+
 function computeActualFlags(item) {
   const evs = (item.events || []).map(e => (e.status || "").toUpperCase());
   const hasEv = (...kw) => evs.some(st => kw.every(k => st.includes(k)));
@@ -1213,7 +1262,7 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
   const prev = await getSaved(env);
   const prevMap = new Map((prev && prev.shipments || []).map(s => [s.booking, s]));
   const discharged = new Set(
-    [...prevMap.values()].filter(hasPodDischarged).map(s => s.booking)
+    [...prevMap.values()].filter(isFullyCompleted).map(s => s.booking)
   );
 
   /* forceBkgs: stale 재시도 모드 — 지정 부킹만, cursor 이동 없음 */
@@ -1399,17 +1448,13 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
   }
   if (histDirty) await env.OQC.put("history", JSON.stringify(hist));
 
-  /* ---- 완료 후 3일 유예 지난 부킹은 추적 목록에서 제거 (HMM 재조회 중단 + LIST/MAP 노출 종료) ----
+  /* ---- 완료 확정 후 3일 유예 지난 부킹은 추적 목록에서 제거 (LIST/MAP 노출 종료) ----
+     반납 확인 건은 반납+3일, 반납 미확인 건은 하역+14일+3일.
      delayHistory에는 이미 영구 저장돼 있으므로 데이터 손실 없음. */
-  const GRACE_MS = 3 * 24 * 3600 * 1000;
   const expired = new Set();
   for (const [bkg, item] of out) {
-    if (!item.delayCompletedAt) continue;
-    const norm = item.delayCompletedAt.length <= 10
-      ? item.delayCompletedAt + "T00:00:00Z"
-      : item.delayCompletedAt.replace(" ", "T") + (item.delayCompletedAt.includes("Z") ? "" : "Z");
-    const t = Date.parse(norm);
-    if (Number.isFinite(t) && (Date.now() - t) >= GRACE_MS) expired.add(bkg);
+    const due = deleteDueMs(item);
+    if (Number.isFinite(due) && Date.now() >= due) expired.add(bkg);
   }
   if (expired.size) {
     const trimmedList = list.filter(b => !expired.has(b));

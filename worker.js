@@ -934,7 +934,7 @@ function buildWeeklyHtml(shipments, now, isTest = false) {
     <td style="padding:28px 32px;background:#ffffff">
       ${isTest ? `<div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:#854D0E;line-height:1.6"><strong>[TEST EMAIL]</strong> This is a test email. Starting this week, the Weekly Shipment Report will be sent automatically every Sunday at 8:00 PM Los Angeles time.</div>` : ''}
       ${holSection}
-      <div style="font-size:11px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">2-WEEK SCHEDULE</div>
+      <div style="font-size:11px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">2-WEEK SCHEDULE <span style="font-size:9px;font-weight:normal;text-transform:none;letter-spacing:0">(For 4-week schedule, visit <a href="https://donghoon2661-prog.github.io/q-report/calendar-public.html" style="color:#0288D1;text-decoration:none" target="_blank">calendar-public.html</a>)</span></div>
       <table width="100%" cellpadding="0" cellspacing="0" border="1" style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;margin-bottom:24px;table-layout:fixed">
         <tr style="background:#F9FAFB">
           <th width="14%" style="width:14%;padding:7px 4px;text-align:center;font-size:10px;font-weight:bold;color:#DC2626;letter-spacing:1px;border:1px solid #E5E7EB">SUN</th>

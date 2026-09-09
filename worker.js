@@ -963,7 +963,7 @@ function buildWeeklyHtml(shipments, now, isTest = false) {
 
 
 async function sendWeeklyEmail(env, isTest = false) {
-  if (!env.RESEND_KEY || !env.ALERT_TO_WEEKLY) return { skipped: "RESEND_KEY 또는 ALERT_TO_WEEKLY 미설정" };
+  if (!env.RESEND_KEY || !env.ALERT_TO) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };
 
   const saved = await getSaved(env);
   if (!saved || !Array.isArray(saved.shipments)) return { skipped: "shipments 없음" };
@@ -976,9 +976,9 @@ async function sendWeeklyEmail(env, isTest = false) {
   const subject = `Weekly Shipment Schedule — ${mon} ${la.getUTCDate()}, ${la.getUTCFullYear()}`;
 
   return await sendMail(env, subject, html, {
-    to:  env.ALERT_TO_WEEKLY,
-    cc:  env.ALERT_CC_WEEKLY  || null,
-    bcc: env.ALERT_BCC_WEEKLY || null
+    to:  env.ALERT_TO,
+    cc:  null,
+    bcc: null
   });
 }
 

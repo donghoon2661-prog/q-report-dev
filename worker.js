@@ -794,7 +794,7 @@ function fmtEta(d) {
 }
 
 /* HTML 생성 */
-function buildWeeklyHtml(shipments, now) {
+function buildWeeklyHtml(shipments, now, isTest = false) {
   const range = weekRange(now);
   const { week1, week2, label } = range;
 
@@ -821,10 +821,10 @@ function buildWeeklyHtml(shipments, now) {
   /* 달력 셀 생성 — 완전 인라인 스타일 */
   function calCell(d, isWeek2) {
     const ds = dateStr(d);
-    const la = toLA(d);
-    const dn = la.getUTCDate();
-    const isSun = la.getUTCDay() === 0;
+    const dn = d.getUTCDate();
+    const isSun = d.getUTCDay() === 0;
     const hol = US_HOLIDAYS_WEEKLY[ds];
+    const isHoliday = !!hol;
 
     const chips = [...week1Ships, ...week2Ships].filter(s => {
       const ed = getEtaDate(s);
@@ -841,7 +841,7 @@ function buildWeeklyHtml(shipments, now) {
       return `<div style="padding:2px 5px;border-radius:3px;font-size:9px;font-weight:bold;line-height:1.4;background:${bg};color:${col};margin-bottom:2px;overflow:hidden">${esc(vesName)}${suffix}</div>`;
     }).join('');
 
-    const dnColor = isSun ? '#DC2626' : '#374151';
+    const dnColor = (isSun || isHoliday) ? '#DC2626' : '#374151';
     return `<td width="14%" style="width:14%;vertical-align:top;padding:6px 5px;border-right:1px solid #E5E7EB;${borderTop}">
       <div style="font-size:12px;font-weight:bold;color:${dnColor};margin-bottom:2px">${dn}</div>
       ${hol ? `<div style="font-size:9px;color:#9CA3AF;line-height:1.3;margin-bottom:2px">&#127482;&#127480; ${esc(hol)}</div>` : ''}
@@ -920,7 +920,7 @@ function buildWeeklyHtml(shipments, now) {
 <title>Weekly Shipment Schedule</title>
 </head>
 <body style="margin:0;padding:32px 16px;background:#F3F4F6;font-family:Arial,Helvetica,sans-serif">
-<table width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px;max-width:600px;margin:0 auto;border-radius:12px;overflow:hidden;background:#ffffff">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:600px;margin:0 auto;border-radius:12px;overflow:hidden;background:#ffffff">
   <!-- 헤더 -->
   <tr>
     <td style="background:#07141C;padding:24px 32px">
@@ -932,6 +932,7 @@ function buildWeeklyHtml(shipments, now) {
   <!-- 바디 -->
   <tr>
     <td style="padding:28px 32px;background:#ffffff">
+      ${isTest ? `<div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:#854D0E;line-height:1.6"><strong>[TEST EMAIL]</strong> This is a test email. Starting this week, the Weekly Shipment Report will be sent automatically every Sunday at 8:00 PM Los Angeles time.</div>` : ''}
       ${holSection}
       <div style="font-size:11px;font-weight:bold;color:#9CA3AF;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">2-WEEK SCHEDULE</div>
       <table width="100%" cellpadding="0" cellspacing="0" border="1" style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;margin-bottom:24px;table-layout:fixed">
@@ -952,7 +953,7 @@ function buildWeeklyHtml(shipments, now) {
   <!-- 푸터 -->
   <tr>
     <td style="padding:16px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:11px;color:#9CA3AF;text-align:center;line-height:1.6">
-      Intelligence Team Notice &nbsp;&middot;&nbsp; Auto-generated every Sunday 19:00 LA time &nbsp;&middot;&nbsp; Do not reply
+      Intelligence Team Notice &nbsp;&middot;&nbsp; Auto-generated every Sunday 19:00 PST / 20:00 PDT &nbsp;&middot;&nbsp; Do not reply
     </td>
   </tr>
 </table>
@@ -961,35 +962,43 @@ function buildWeeklyHtml(shipments, now) {
 }
 
 
-async function sendWeeklyEmail(env) {
-  if (!env.RESEND_KEY || !env.ALERT_TO) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };
+async function sendWeeklyEmail(env, isTest = false) {
+  if (!env.RESEND_KEY || !env.ALERT_TO_WEEKLY) return { skipped: "RESEND_KEY 또는 ALERT_TO_WEEKLY 미설정" };
 
   const saved = await getSaved(env);
   if (!saved || !Array.isArray(saved.shipments)) return { skipped: "shipments 없음" };
 
   const now = new Date();
-  const html = buildWeeklyHtml(saved.shipments, now);
+  const html = buildWeeklyHtml(saved.shipments, now, isTest);
 
-  const range = weekRange(now);
   const la = toLA(now);
   const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][la.getUTCMonth()];
   const subject = `Weekly Shipment Schedule — ${mon} ${la.getUTCDate()}, ${la.getUTCFullYear()}`;
 
-  return await sendMail(env, subject, html);
+  return await sendMail(env, subject, html, {
+    to:  env.ALERT_TO_WEEKLY,
+    cc:  env.ALERT_CC_WEEKLY  || null,
+    bcc: env.ALERT_BCC_WEEKLY || null
+  });
 }
 
 
 /* ---------- 이메일 알림 ----------
    Cloudflare Workers는 자체 발송 기능이 없어 Resend HTTP API를 쓴다.
    설정: secret RESEND_KEY, var ALERT_TO(쉼표 구분 가능), var ALERT_FROM(선택) */
-async function sendMail(env, subject, html) {
-  if (!env.RESEND_KEY || !env.ALERT_TO) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };
-  const to = String(env.ALERT_TO).split(",").map(x => x.trim()).filter(Boolean);
+async function sendMail(env, subject, html, recipients = null) {
+  const to = recipients?.to
+    ? String(recipients.to).split(",").map(x => x.trim()).filter(Boolean)
+    : String(env.ALERT_TO || "").split(",").map(x => x.trim()).filter(Boolean);
+  if (!env.RESEND_KEY || !to.length) return { skipped: "RESEND_KEY 또는 ALERT_TO 미설정" };
   const from = env.ALERT_FROM || "Kossan OQC <onboarding@resend.dev>";
+  const body = { from, to, subject, html };
+  if (recipients?.cc) body.cc = String(recipients.cc).split(",").map(x => x.trim()).filter(Boolean);
+  if (recipients?.bcc) body.bcc = String(recipients.bcc).split(",").map(x => x.trim()).filter(Boolean);
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Authorization": "Bearer " + env.RESEND_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, subject, html })
+    body: JSON.stringify(body)
   });
   if (!r.ok) return { error: "Mail send failed " + r.status + " " + (await r.text()).slice(0, 200) };
   return { ok: true };
@@ -1814,8 +1823,8 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
     }
     if (url.pathname === "/weekly-test") {
       if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
-      const r = await sendWeeklyEmail(env);
-      return json({ to: env.ALERT_TO || null, ...r });
+      const r = await sendWeeklyEmail(env, true);
+      return json({ to: env.ALERT_TO_WEEKLY || env.ALERT_TO || null, ...r });
     }
     if (url.pathname === "/delaylog") {
       const bkg = url.searchParams.get("bkg");
@@ -2171,5 +2180,3 @@ async function appendSessionLog(env, entries) {
   const combined = [...existing, ...newRows].slice(-200);
   await env.OQC.put("sessionLog", JSON.stringify(combined), { expirationTtl: 14 * 24 * 3600 }).catch(() => {});
 }
-
-

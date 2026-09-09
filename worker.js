@@ -338,7 +338,7 @@ function parseBooking(html, bkg) {
          없으면 Vessel Movement의 feeder.eta(계획값) fallback */
       const dischEv = events.find(e => {
         const st = (e.status || "").toUpperCase();
-        return st.includes("FEEDER DISCHARGED") && st.includes("T/S");
+        return st.includes("DISCHARGED") && st.includes("T/S");
       });
       return dischEv ? dischEv.at.slice(0, 10) + "T" + dischEv.at.slice(11, 16) : feeder.eta;
     })() : null,
@@ -447,7 +447,7 @@ function computeActualFlags(item) {
 
   return {
     polDepActual:    !!item.polDepActual || hasEv("DEPARTURE", "POL") || hasEv("FEEDER LOADING", "POL") || hasEv("FEEDER DEPARTURE"),
-    tsArrActual:     !!item.tsArrActual  || hasEv("FEEDER DISCHARGED", "T/S"),  /* HMM Actual 기준: Feeder Discharged at T/S Port만 인정 */
+    tsArrActual:     !!item.tsArrActual  || hasEv("DISCHARGED", "T/S"),  /* HMM Actual 기준: Feeder/Vessel Discharged at T/S Port 모두 인정 (KME 등 모선 환적 포함) */
     tsDepActual:     !!item.tsDepActual  || hasEv("DEPARTURE", "T/S"),
     etaActual:       !!item.etaActual    || hasEv("DISCHARG", "POD")
                                          || hasCur("DISCHARG", "POD"),

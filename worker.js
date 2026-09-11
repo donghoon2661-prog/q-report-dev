@@ -1623,6 +1623,45 @@ const auth = (req, env) => req.headers.get("X-Refresh-Key") === env.REFRESH_KEY;
 const BKG_RE = /^[A-Z]{4}\d{8}$/;
 const stampNow = () => new Date().toISOString();
 
+
+/* ── 원자재 가격 수집 (SunSirs) ─────────────────────────────────────
+   NBR(893), Corrugated paper(1250), White cardboard(1319)
+   zwd_table_li 구조에서 최근 7일치 파싱 → KV raw_material_latest 저장 */
+async function collectRawMaterials(env) {
+  const TARGETS = {
+    nbr:              'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-893.html',
+    corrugated_paper: 'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-1250.html',
+    white_cardboard:  'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-1319.html'
+  };
+  const results = {};
+  for (const [name, targetUrl] of Object.entries(TARGETS)) {
+    try {
+      const r = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Referer': 'https://www.sunsirs.com/'
+        }
+      });
+      const html = await r.text();
+      // zwd_table_li에서 가격·날짜 파싱 (최근 7일)
+      const rows = [];
+      const liPattern = /<li class="zwd_table_li"><p>[^<]*<\/p><p>([\d.]+)<\/p><p>(\d{2}\/\d{2})<\/p><\/li>/g;
+      let m;
+      while ((m = liPattern.exec(html)) !== null) {
+        rows.push({ price: parseFloat(m[1]), date: m[2] });
+      }
+      results[name] = { status: r.status, rows, latest: rows[0] || null };
+    } catch(e) {
+      results[name] = { error: e.message };
+    }
+  }
+  const payload = { collected_at: new Date().toISOString(), data: results };
+  await env.OQC.put('raw_material_latest', JSON.stringify(payload), { expirationTtl: 86400 * 3 });
+  return payload;
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -1673,6 +1712,18 @@ export default {
     });
   }
   // ── END TEST echemi ───────────────────────────────────────────────
+
+  // ── 원자재 최신 가격 조회 (Claude Cowork용) ──────────────────────
+  if (url.pathname === '/raw-material-latest') {
+    const raw = await env.OQC.get('raw_material_latest');
+    if (!raw) {
+      return new Response(JSON.stringify({ error: 'no data yet' }), {
+        status: 404, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return new Response(raw, { headers: { 'Content-Type': 'application/json' } });
+  }
+  // ── END raw-material-latest ──────────────────────────────────────
 
   // ── TEST: SunSirs 접근 테스트 (임시, DEV only) ──────────────────
   if (url.pathname === '/test-sunsirs') {
@@ -2182,6 +2233,16 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
     const trigger = isWeekly ? "cron-weekly" : isMaps ? "cron-maps" : isStaleRetry ? "cron-stale" : "cron";
 
     ctx.waitUntil((async () => {
+
+      /* ── 원자재 가격 수집 (매일 새벽 3시 KST = 18:00 UTC) ── */
+      if (/^0\s+18\s+/.test(cron)) {
+        try {
+          await collectRawMaterials(env);
+        } catch(e) {
+          console.error('raw material collect error:', e.message);
+        }
+        return;
+      }
 
       /* ── weekly 이메일 ── */
       if (isWeekly) {

@@ -1678,8 +1678,8 @@ export default {
   if (url.pathname === '/test-sunsirs') {
     const TARGETS = {
       nbr:              'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-893.html',
-      white_cardboard:  'https://graph.100ppi.com/?c=p&f=table&h=288&id=1319&state=english&w=258',
-      corrugated_paper: 'https://graph.100ppi.com/?c=p&f=table&h=288&id=1250&state=english&w=258'
+      white_cardboard:  'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-1319.html',
+      corrugated_paper: 'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-1250.html'
     };
     const results = {};
     for (const [name, TARGET] of Object.entries(TARGETS)) {

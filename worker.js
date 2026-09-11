@@ -1713,6 +1713,21 @@ export default {
   }
   // ── END TEST echemi ───────────────────────────────────────────────
 
+  // ── 원자재 수동 수집 트리거 (DEV 테스트용) ─────────────────────────
+  if (url.pathname === '/collect-raw-materials') {
+    try {
+      const result = await collectRawMaterials(env);
+      return new Response(JSON.stringify(result, null, 2), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch(e) {
+      return new Response(JSON.stringify({ error: e.message }), {
+        status: 500, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+  // ── END collect-raw-materials ────────────────────────────────────
+
   // ── 원자재 최신 가격 조회 (Claude Cowork용) ──────────────────────
   if (url.pathname === '/raw-material-latest') {
     const raw = await env.OQC.get('raw_material_latest');

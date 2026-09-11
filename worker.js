@@ -1661,7 +1661,8 @@ export default {
           htmlLength: html.length,
           hasPrice:   priceMatch ? true : false,
           firstPrice: priceMatch ? priceMatch[1] : null,
-          firstDate:  dateMatch  ? dateMatch[0]  : null
+          firstDate:  dateMatch  ? dateMatch[0]  : null,
+          preview:    html.slice(0, 500)
         };
       } catch (e) {
         results[name] = { error: e.message };

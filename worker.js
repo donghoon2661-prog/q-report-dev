@@ -1675,38 +1675,43 @@ export default {
 
   // ── TEST: SunSirs 접근 테스트 (임시, DEV only) ──────────────────
   if (url.pathname === '/test-sunsirs') {
-    const TARGET = 'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-893.html';
-    try {
-      const r = await fetch(TARGET, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Referer': 'https://www.sunsirs.com/'
-        }
-      });
-      const html = await r.text();
-      const hasTable  = html.includes('zwd_table_li');
-      const hasPrice  = /\d{4,6}\.\d{2}/.test(html);
-      const dateMatch  = html.match(/\d{2}\/\d{2}/);
-      const priceMatch = html.match(/(\d{4,6}\.\d{2})/);
-      return new Response(JSON.stringify({
-        status:      r.status,
-        htmlLength:  html.length,
-        hasZwdTable: hasTable,
-        hasPrice:    hasPrice,
-        firstPrice:  priceMatch ? priceMatch[1] : null,
-        firstDate:   dateMatch  ? dateMatch[1]  : null,
-        preview:     html.slice(0, 500)
-      }, null, 2), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    } catch (e) {
-      return new Response(JSON.stringify({ error: e.message }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    const TARGETS = {
+      nbr:              'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-893.html',
+      white_cardboard:  'https://www.sunsirs.com/commodity-news/list-3189-1.html',
+      corrugated_paper: 'https://www.sunsirs.com/commodity-news/list-1163-1.html'
+    };
+    const results = {};
+    for (const [name, TARGET] of Object.entries(TARGETS)) {
+      try {
+        const r = await fetch(TARGET, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.sunsirs.com/'
+          }
+        });
+        const html = await r.text();
+        const hasTable   = html.includes('zwd_table_li');
+        const hasPrice   = /\d{4,6}\.\d{2}/.test(html);
+        const dateMatch  = html.match(/\d{2}\/\d{2}/);
+        const priceMatch = html.match(/(\d{4,6}\.\d{2})/);
+        results[name] = {
+          status:      r.status,
+          htmlLength:  html.length,
+          hasZwdTable: hasTable,
+          hasPrice:    hasPrice,
+          firstPrice:  priceMatch ? priceMatch[1] : null,
+          firstDate:   dateMatch  ? dateMatch[1]  : null,
+          preview:     html.slice(0, 300)
+        };
+      } catch(e) {
+        results[name] = { error: e.message };
+      }
     }
+    return new Response(JSON.stringify(results, null, 2), {
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
   // ── END TEST ─────────────────────────────────────────────────────
 

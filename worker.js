@@ -1628,6 +1628,45 @@ export default {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
+  // ── TEST: echemi BD/AN 접근 테스트 (임시, DEV only) ─────────────
+  if (url.pathname === '/test-echemi') {
+    const TARGETS = {
+      bd: 'https://www.echemi.com/productsInformation/pid_Seven2409-13-butadiene.html',
+      an: 'https://www.echemi.com/productsInformation/pid_Seven2451-acrylonitrile.html'
+    };
+    const results = {};
+    for (const [name, url2] of Object.entries(TARGETS)) {
+      try {
+        const r = await fetch(url2, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.echemi.com/'
+          }
+        });
+        const html = await r.text();
+        // 가격 패턴: USD/ton 앞 숫자 or Yuan/mt 앞 숫자
+        const priceMatch = html.match(/([\d,]+(?:\.\d+)?)\s*(?:USD\/ton|Yuan\/mt)/);
+        const dateMatch  = html.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/);
+        results[name] = {
+          status:     r.status,
+          htmlLength: html.length,
+          hasPrice:   priceMatch ? true : false,
+          firstPrice: priceMatch ? priceMatch[1] : null,
+          firstDate:  dateMatch  ? dateMatch[0]  : null,
+          preview:    html.slice(0, 300)
+        };
+      } catch (e) {
+        results[name] = { error: e.message };
+      }
+    }
+    return new Response(JSON.stringify(results, null, 2), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  // ── END TEST echemi ───────────────────────────────────────────────
+
   // ── TEST: SunSirs 접근 테스트 (임시, DEV only) ──────────────────
   if (url.pathname === '/test-sunsirs') {
     const TARGET = 'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-893.html';

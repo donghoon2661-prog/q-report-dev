@@ -1628,16 +1628,24 @@ export default {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
-  // ── TEST: echemi BD/AN 접근 테스트 (임시, DEV only) ─────────────
+  // ── TEST: echemi 전체 원료 접근 테스트 (임시, DEV only) ──────────
   if (url.pathname === '/test-echemi') {
     const TARGETS = {
-      bd: 'https://www.echemi.com/productsInformation/pid_Seven2409-13-butadiene.html',
-      an: 'https://www.echemi.com/productsInformation/pid_Seven2451-acrylonitrile.html'
+      butadiene:        'https://www.echemi.com/productsInformation/pid_Seven2409-13-butadiene.html',
+      acrylonitrile:    'https://www.echemi.com/productsInformation/pid_Seven2451-acrylonitrile.html',
+      propylene:        'https://www.echemi.com/productsInformation/pid_Seven1855-propylene.html',
+      naphtha:          'https://www.echemi.com/productsInformation/pid_Rock27583-petroleumether.html',
+      crude_oil:        'https://www.echemi.com/productsInformation/pd2106151004-crude-oil.html',
+      benzene:          'https://www.echemi.com/productsInformation/pid_Seven2868-benzene.html',
+      zinc_oxide:       'https://www.echemi.com/productsInformation/temppid160705012052-zinc-oxide.html',
+      titanium_dioxide: 'https://www.echemi.com/productsInformation/pd20170214082533462-titanium-dioxide.html',
+      koh:              'https://www.echemi.com/productsInformation/pd20150901020-potassium-hydroxide.html',
+      calcium_chloride: 'https://www.echemi.com/productsInformation/pd20150901144-calcium-chloride-dihydrate.html'
     };
     const results = {};
-    for (const [name, url2] of Object.entries(TARGETS)) {
+    for (const [name, targetUrl] of Object.entries(TARGETS)) {
       try {
-        const r = await fetch(url2, {
+        const r = await fetch(targetUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -1646,16 +1654,14 @@ export default {
           }
         });
         const html = await r.text();
-        // 가격 패턴: USD/ton 앞 숫자 or Yuan/mt 앞 숫자
-        const priceMatch = html.match(/([\d,]+(?:\.\d+)?)\s*(?:USD\/ton|Yuan\/mt)/);
+        const priceMatch = html.match(/([\d,]+(?:\.\d+)?)\s*(?:USD\/ton|Yuan\/mt|\$\/bbl)/);
         const dateMatch  = html.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/);
         results[name] = {
           status:     r.status,
           htmlLength: html.length,
           hasPrice:   priceMatch ? true : false,
           firstPrice: priceMatch ? priceMatch[1] : null,
-          firstDate:  dateMatch  ? dateMatch[0]  : null,
-          preview:    html.slice(0, 300)
+          firstDate:  dateMatch  ? dateMatch[0]  : null
         };
       } catch (e) {
         results[name] = { error: e.message };

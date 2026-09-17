@@ -56,6 +56,32 @@ function getServiceRoute(svc) {
   return r;
 }
 
+/* 날짜변경선(±180°) crossing 분리 — svcRoute에만 사용 */
+function splitDatelineRoute(route) {
+  const parts = [];
+  let part = [route[0]];
+  for (let i = 1; i < route.length; i++) {
+    const prev = route[i - 1];
+    const curr = route[i];
+    const dLng = curr[1] - prev[1];
+    if (Math.abs(dLng) > 180) {
+      /* 교차점 위도 보간 */
+      const wrapCurr = dLng < 0 ? curr[1] + 360 : curr[1] - 360;
+      const t = (180 - Math.abs(prev[1])) / Math.abs(wrapCurr - prev[1]);
+      const crossLat = prev[0] + t * (curr[0] - prev[0]);
+      const signA = prev[1] > 0 ? 180 : -180;
+      const signB = -signA;
+      part.push([crossLat, signA]);
+      parts.push(part);
+      part = [[crossLat, signB], curr];
+    } else {
+      part.push(curr);
+    }
+  }
+  if (part.length) parts.push(part);
+  return parts;
+}
+
 /* ===== map.js — 지도 · 좌표 · 위치 계산 ===== */
 
 /* ---------- 안전한 timestamp 파싱 ----------
@@ -253,12 +279,14 @@ function initMap(data){
     }
 
     if (svcRoute) {
-      /* PS3/PS5 실제 항로 표시 */
+      /* PS3/PS5 실제 항로 표시 — 날짜변경선 분리 */
       const lineColor = det.inferred ? '#B8860B' : '#1E3A4C';
-      L.polyline(svcRoute, {
-        color: lineColor, weight: 1.5,
-        dashArray: det.inferred ? '4,4' : null, opacity: 0.9
-      }).addTo(map);
+      splitDatelineRoute(svcRoute).forEach(seg => {
+        L.polyline(seg, {
+          color: lineColor, weight: 1.5,
+          dashArray: det.inferred ? '4,4' : null, opacity: 0.9
+        }).addTo(map);
+      });
       /* 기항지 마커 (실제 route 좌표 기반) */
       const r = filterBadJumps(s.route.map(wrap));
       r.forEach((p,k)=>{

@@ -63,38 +63,14 @@ function detectService(s) {
   return { svc: null, inferred: false };
 }
 
-/* 노선별 항로 좌표 반환 (경도 래핑 포함) */
+/* 노선별 항로 좌표 반환 — wrap() 적용으로 경도 연속 보장 (날짜변경선 통과 시 >180 양수 경도) */
 function getServiceRoute(svc) {
   const r = svc === 'PS3' ? ROUTE_PS3 : svc === 'PS5' ? ROUTE_PS5 : null;
   if (!r) return null;
-  return r;
+  return r.map(wrap);
 }
 
-/* 날짜변경선(±180°) crossing 분리 — svcRoute에만 사용 */
-function splitDatelineRoute(route) {
-  const parts = [];
-  let part = [route[0]];
-  for (let i = 1; i < route.length; i++) {
-    const prev = route[i - 1];
-    const curr = route[i];
-    const dLng = curr[1] - prev[1];
-    if (Math.abs(dLng) > 180) {
-      /* 교차점 위도 보간 */
-      const wrapCurr = dLng < 0 ? curr[1] + 360 : curr[1] - 360;
-      const t = (180 - Math.abs(prev[1])) / Math.abs(wrapCurr - prev[1]);
-      const crossLat = prev[0] + t * (curr[0] - prev[0]);
-      const signA = prev[1] > 0 ? 180 : -180;
-      const signB = -signA;
-      part.push([crossLat, signA]);
-      parts.push(part);
-      part = [[crossLat, signB], curr];
-    } else {
-      part.push(curr);
-    }
-  }
-  if (part.length) parts.push(part);
-  return parts;
-}
+
 
 /* ===== map.js — 지도 · 좌표 · 위치 계산 ===== */
 
@@ -293,16 +269,14 @@ function initMap(data){
     }
 
     if (svcRoute) {
-      /* PS3/PS5 실제 항로 표시 — 날짜변경선 분리 */
+      /* PS3/PS5 실제 항로 표시 — getServiceRoute()가 wrap() 적용한 연속 경도를 반환 */
       const lineColor = det.inferred ? '#B8860B' : '#1E3A4C';
-      splitDatelineRoute(svcRoute).forEach(seg => {
-        L.polyline(seg, {
-          color: lineColor, weight: 1.5,
-          dashArray: det.inferred ? '4,4' : null, opacity: 0.9
-        }).addTo(map);
-      });
+      L.polyline(svcRoute, {
+        color: lineColor, weight: 1.5,
+        dashArray: det.inferred ? '4,4' : null, opacity: 0.9
+      }).addTo(map);
       /* 기항지 마커 (실제 route 좌표 기반) */
-      const r = filterBadJumps(s.route.map(wrap));
+      const r = s.route.map(wrap);
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
         if(portSeen[key]) return; portSeen[key]=1;
@@ -312,7 +286,7 @@ function initMap(data){
       });
     } else {
       /* UNKNOWN — 항로 라인 없음, 기항지 마커만 */
-      const r = filterBadJumps(s.route.map(wrap));
+      const r = s.route.map(wrap);
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
         if(portSeen[key]) return; portSeen[key]=1;

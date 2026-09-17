@@ -277,10 +277,13 @@ function initMap(data){
 
     if (hasDense) {
       /* marnet dense route — 선사 무관, route 좌표를 그대로 polyline으로 그린다
-         unwrapCoords 완료된 연속 경도이므로 wrap/split 불필요 */
+         unwrapCoords 완료된 연속 경도이므로 wrap/split 불필요
+         [DEV 검증용] 빨간 실선 + 두꺼운 선으로 수동 ROUTE_PS3/PS5와 시각 구분 */
+      console.log('[MARNET]', s.booking, 'dense route pts:', s.route.length);
       L.polyline(s.route, {
-        color: '#1E3A4C', weight: 1.5, opacity: 0.9
-      }).addTo(map);
+        color: '#E53935', weight: 3, opacity: 0.9
+      }).bindTooltip('MARNET: ' + s.booking + ' (' + s.route.length + ' pts)',
+          {sticky: true, className: 'vsl-tip'}).addTo(map);
       /* 기항지 마커: rawRoute(또는 route) 기반 */
       const r = portRoute.map(wrap);
       r.forEach((p,k)=>{

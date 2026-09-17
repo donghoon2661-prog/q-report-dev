@@ -53,7 +53,7 @@ function detectService(s) {
 function getServiceRoute(svc) {
   const r = svc === 'PS3' ? ROUTE_PS3 : svc === 'PS5' ? ROUTE_PS5 : null;
   if (!r) return null;
-  return r.map(p => p[1] < -30 ? [p[0], p[1] + 360] : p);
+  return r;
 }
 
 /* ===== map.js — 지도 · 좌표 · 위치 계산 ===== */

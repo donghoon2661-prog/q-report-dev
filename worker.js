@@ -2020,6 +2020,37 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       return json({ to: env.ALERT_TO || null, from: env.ALERT_FROM || "default",
                     candidates: list.map(s => s.booking), ...res });
     }
+    if (url.pathname === "/map-debug") {
+      if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+      const bkg = (url.searchParams.get("bkg") || "").trim().toUpperCase();
+      if (!bkg) return json({ error: "bkg parameter required" }, 400);
+      try {
+        const budget = newBudget();
+        const session = await openSession(budget);
+        /* fetchMap과 동일한 방식으로 지도 페이지 fetch */
+        const cntr = url.searchParams.get("cntr") || "";
+        const mapUrl = MAP_URL + "?blNo=" + encodeURIComponent(bkg) + "&cntrNo=" + encodeURIComponent(cntr);
+        const r2 = await hmmFetch(budget, mapUrl, {
+          headers: {
+            "User-Agent": UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+            "Cookie": session.cookie,
+            "Referer": PAGE
+          }
+        }, "map-debug(" + bkg + ")", 3);
+        const html = await r2.text();
+        const idx = html.indexOf("routePoints");
+        if (idx < 0) return json({ found: false, htmlLen: html.length, contextLength: 0, snippet: null });
+        const start = Math.max(0, idx - 3000);
+        const end = Math.min(html.length, idx + 5000);
+        const snippet = html.slice(start, end);
+        return json({ found: true, index: idx, htmlLen: html.length, contextLength: snippet.length, snippet });
+      } catch(e) {
+        return json({ error: String(e.message || e) }, 502);
+      }
+    }
+
     if (url.pathname === "/weekly-test") {
       if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
       const r = await sendWeeklyEmail(env, true);

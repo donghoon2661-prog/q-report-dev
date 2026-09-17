@@ -675,11 +675,16 @@ function marnetSmooth(coords) {
          계산 실패 시 rawRoute 그대로 반환
    ─────────────────────────────────────────────────────────────────── */
 function computeMaritimeRoute(graph, rawRoute) {
-  if (!graph || !Array.isArray(rawRoute) || rawRoute.length < 2) return rawRoute;
+  if (!graph || !Array.isArray(rawRoute) || rawRoute.length < 2) return { route: rawRoute, segBounds: null };
   try {
     const full = [];
+    /* segBounds[i] = full[] 배열 내 rawRoute[i]→rawRoute[i+1] 구간의 시작 인덱스
+       segBounds[rawRoute.length-1] = 마지막 구간의 마지막 유효 인덱스 */
+    const segBounds = [];
     let lastLng = null;
     for (let i = 0; i < rawRoute.length - 1; i++) {
+      /* 이 구간이 full[]에 push되기 직전의 인덱스가 구간 시작 */
+      segBounds.push(full.length);
       const seg = marnetSegment(graph, rawRoute[i], rawRoute[i+1]);
       let unwrapped = marnetUnwrap(seg, lastLng);
       if (unwrapped.length > 2) {
@@ -691,10 +696,13 @@ function computeMaritimeRoute(graph, rawRoute) {
       full.push(...unwrapped);
       lastLng = full.length ? full[full.length - 1][1] : lastLng;
     }
-    return full.length >= 2 ? full : rawRoute;
+    /* 마지막 구간의 마지막 유효 인덱스 */
+    segBounds.push(full.length > 0 ? full.length - 1 : 0);
+    if (full.length >= 2) return { route: full, segBounds };
+    return { route: rawRoute, segBounds: null };
   } catch (e) {
     console.error("[computeMaritimeRoute] failed", String(e));
-    return rawRoute;
+    return { route: rawRoute, segBounds: null };
   }
 }
 
@@ -1758,7 +1766,7 @@ async function collectMaps(env, forceBkg = []) {
   const forceSet = new Set(forceBkg.map(b => b.trim().toUpperCase()));
   const byBkg = new Map(shipments.map(s => [s.booking, s]));
   const MAP_FIELDS = new Set(["route","names","mapAt","idx","ratio","namedPorts"]);
-  const MAP_FIELDS_SAVE = new Set(["route","rawRoute","names","mapAt","idx","ratio","namedPorts","mapError"]);
+  const MAP_FIELDS_SAVE = new Set(["route","rawRoute","names","mapAt","idx","ratio","namedPorts","mapError","segBounds"]);
 
   /* marnet graph 로드 — collectMaps 호출당 1회만 구성, 모든 부킹이 공유 */
   let maritimeGraph = null;
@@ -1803,11 +1811,14 @@ async function collectMaps(env, forceBkg = []) {
           }
         }
         delete item.mapError;
-        /* maritime routing: rawRoute 저장 후 dense route 계산 */
+        /* maritime routing: rawRoute 저장 후 dense route + segBounds 계산 */
         if (maritimeGraph && Array.isArray(item.route) && item.route.length >= 2) {
           item.rawRoute = item.route;  // HMM routePoints 원본 보존
           const denseResult = computeMaritimeRoute(maritimeGraph, item.rawRoute);
-          if (denseResult && denseResult.length >= 2) item.route = denseResult;
+          if (denseResult.route && denseResult.route.length >= 2) {
+            item.route = denseResult.route;
+            if (denseResult.segBounds) item.segBounds = denseResult.segBounds;
+          }
         }
       } catch (e) {
         stillFailing.push(bkg);

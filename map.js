@@ -169,7 +169,10 @@ function filterBadJumps(pts) {
 function locate(s){
   if(!Array.isArray(s.route) || s.route.length < 2) return null;
   const nm = portNames(s);
-  const r = s.route.map(wrap);
+  /* rawRoute: HMM 기항지 원본 (idx/ratio 기준). dense route가 있을 때 위치 계산 기준을 유지하기 위해 사용.
+     rawRoute 없으면 s.route 그대로 (dense route 미도입 또는 기존 5개 좌표 모두 호환) */
+  const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
+  const r = posRoute.map(wrap);
   if(s.etaActual){
     const last = r[r.length - 1];
     return { pos: last, i: r.length - 2, f: 1, names: nm,
@@ -261,22 +264,40 @@ function initMap(data){
 
   const portSeen = {};
   data.shipments.forEach(s=>{
+    /* dense route: route에 기항지보다 훨씬 많은 좌표가 있으면 marnet routing 완료 상태
+       기항지 마커는 rawRoute(원본) 또는 route(dense 미도입 시) 기반으로 표시 */
+    const hasDense = Array.isArray(s.route) && s.route.length > 10;
+    const portRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
     const det = detectService(s);
-    const svcRoute = det.svc ? getServiceRoute(det.svc) : null;
-    /* s.route 없어도 고정 항로(svcRoute)가 있으면 계속 진행 */
-    if (!svcRoute && (!Array.isArray(s.route) || s.route.length < 2)) {
+    const svcRoute = hasDense ? null : (det.svc ? getServiceRoute(det.svc) : null);
+
+    if (!hasDense && !svcRoute && (!Array.isArray(s.route) || s.route.length < 2)) {
       markers.push(null); return;
     }
 
-    if (svcRoute) {
-      /* PS3/PS5 실제 항로 표시 — getServiceRoute()가 wrap() 적용한 연속 경도를 반환 */
+    if (hasDense) {
+      /* marnet dense route — 선사 무관, route 좌표를 그대로 polyline으로 그린다
+         unwrapCoords 완료된 연속 경도이므로 wrap/split 불필요 */
+      L.polyline(s.route, {
+        color: '#1E3A4C', weight: 1.5, opacity: 0.9
+      }).addTo(map);
+      /* 기항지 마커: rawRoute(또는 route) 기반 */
+      const r = portRoute.map(wrap);
+      r.forEach((p,k)=>{
+        const key = p[0].toFixed(2)+","+p[1].toFixed(2);
+        if(portSeen[key]) return; portSeen[key]=1;
+        L.circleMarker(p,{radius:4,color:cssVar('--fog','#8AA4B5'),weight:1.5,
+                          fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
+          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
+      });
+    } else if (svcRoute) {
+      /* PS3/PS5 수동 항로 (dense route 미도입 fallback) */
       const lineColor = det.inferred ? '#B8860B' : '#1E3A4C';
       L.polyline(svcRoute, {
         color: lineColor, weight: 1.5,
         dashArray: det.inferred ? '4,4' : null, opacity: 0.9
       }).addTo(map);
-      /* 기항지 마커 (실제 route 좌표 기반) */
-      const r = s.route.map(wrap);
+      const r = portRoute.map(wrap);
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
         if(portSeen[key]) return; portSeen[key]=1;
@@ -285,8 +306,8 @@ function initMap(data){
           .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
       });
     } else {
-      /* UNKNOWN — 항로 라인 없음, 기항지 마커만 */
-      const r = s.route.map(wrap);
+      /* UNKNOWN — 기항지 마커만 */
+      const r = portRoute.map(wrap);
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
         if(portSeen[key]) return; portSeen[key]=1;

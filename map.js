@@ -153,7 +153,7 @@ function filterBadJumps(pts) {
 function locate(s){
   if(!Array.isArray(s.route) || s.route.length < 2) return null;
   const nm = portNames(s);
-  const r = filterBadJumps(s.route.map(wrap));
+  const r = s.route.map(wrap);
   if(s.etaActual){
     const last = r[r.length - 1];
     return { pos: last, i: r.length - 2, f: 1, names: nm,

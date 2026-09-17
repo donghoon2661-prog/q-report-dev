@@ -135,10 +135,25 @@ function synthRoute(s){
 const wrap = p => [p[0], p[1] < -30 ? p[1] + 360 : p[1]];
 const unwrap = l => ((l + 180) % 360) - 180;
 
+/* 비정상 좌표 점프 필터 — wrap() 적용 후 사용, 원본 s.route 불변 */
+function filterBadJumps(pts) {
+  if (pts.length < 2) return pts;
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = out[out.length - 1];
+    const curr = pts[i];
+    const dLng = Math.abs(curr[1] - prev[1]);
+    const dLat = Math.abs(curr[0] - prev[0]);
+    if (dLng > 100 || dLat > 50) continue;
+    out.push(curr);
+  }
+  return out;
+}
+
 function locate(s){
   if(!Array.isArray(s.route) || s.route.length < 2) return null;
   const nm = portNames(s);
-  const r = s.route.map(wrap);
+  const r = filterBadJumps(s.route.map(wrap));
   if(s.etaActual){
     const last = r[r.length - 1];
     return { pos: last, i: r.length - 2, f: 1, names: nm,
@@ -245,7 +260,7 @@ function initMap(data){
         dashArray: det.inferred ? '4,4' : null, opacity: 0.9
       }).addTo(map);
       /* 기항지 마커 (실제 route 좌표 기반) */
-      const r = s.route.map(wrap);
+      const r = filterBadJumps(s.route.map(wrap));
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
         if(portSeen[key]) return; portSeen[key]=1;
@@ -255,7 +270,7 @@ function initMap(data){
       });
     } else {
       /* UNKNOWN — 항로 라인 없음, 기항지 마커만 */
-      const r = s.route.map(wrap);
+      const r = filterBadJumps(s.route.map(wrap));
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
         if(portSeen[key]) return; portSeen[key]=1;

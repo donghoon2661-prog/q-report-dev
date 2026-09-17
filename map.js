@@ -169,35 +169,97 @@ function filterBadJumps(pts) {
 function locate(s){
   if(!Array.isArray(s.route) || s.route.length < 2) return null;
   const nm = portNames(s);
-  /* rawRoute: HMM 기항지 원본 (idx/ratio 기준). dense route가 있을 때 위치 계산 기준을 유지하기 위해 사용.
-     rawRoute 없으면 s.route 그대로 (dense route 미도입 또는 기존 5개 좌표 모두 호환) */
-  const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
-  const r = posRoute.map(wrap);
-  if(s.etaActual){
+
+  const idx = Number.isFinite(s.idx) ? s.idx : 0;
+  const f   = Number.isFinite(s.ratio) ? Math.max(0, Math.min(1, s.ratio)) : 0;
+
+  /* segBounds + dense route: 선박 마커를 실제 항로 위에 배치 */
+  const hasDensePos = Array.isArray(s.segBounds) && s.segBounds.length >= 2
+    && Array.isArray(s.rawRoute) && s.rawRoute.length >= 2
+    && s.route.length > 10;
+
+  let pos, atPort, done, total;
+
+  if (hasDensePos) {
+    /* dense route(s.route)와 segBounds를 이용해 정확한 위치 계산
+       segBounds[idx]   = 이 구간의 시작 인덱스
+       segBounds[idx+1] = 다음 구간 시작(= 이 구간 끝 다음) 또는 마지막 유효 인덱스 */
+    const safeIdx = Math.max(0, Math.min(idx, s.rawRoute.length - 2));
+    const sb = s.segBounds;
+    const segStart = sb[safeIdx];
+    /* idx+1이 마지막 waypoint면 sb[idx+1]은 마지막 유효 인덱스(inclusive) */
+    const segEnd   = (safeIdx + 1 < sb.length) ? sb[safeIdx + 1] : (s.route.length - 1);
+
+    /* segEnd가 segStart보다 큰 경우만 interpolation, 같으면 시작점 사용 */
+    let denseA, denseB, segF;
+    if (segEnd > segStart) {
+      /* 구간 내 정확한 인덱스 */
+      const span = segEnd - segStart;
+      const raw  = segStart + span * f;
+      const lo   = Math.floor(raw);
+      const hi   = Math.min(lo + 1, segEnd);
+      segF = raw - lo;
+      denseA = s.route[lo];
+      denseB = s.route[hi];
+    } else {
+      denseA = denseB = s.route[segStart] || s.route[0];
+      segF = 0;
+    }
+
+    if (!denseA || !denseB) {
+      /* fallback: dense route 자체를 선형 보간 */
+      const r2 = s.route.map(wrap);
+      const i2 = Math.max(0, Math.min(safeIdx, r2.length - 2));
+      const a2 = r2[i2], b2 = r2[i2+1];
+      pos = a2 && b2 ? [a2[0]+(b2[0]-a2[0])*f, a2[1]+(b2[1]-a2[1])*f] : wrap(s.route[0]);
+    } else {
+      const wa = wrap(denseA), wb = wrap(denseB);
+      pos = [wa[0]+(wb[0]-wa[0])*segF, wa[1]+(wb[1]-wa[1])*segF];
+    }
+    atPort = f < 0.01;
+    done = safeIdx + f;
+    total = Math.max(1, s.rawRoute.length - 1);
+
+  } else {
+    /* 기존 로직: rawRoute(또는 route) 직선 보간 */
+    const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
+    const r = posRoute.map(wrap);
+    if(s.etaActual){
+      const last = r[r.length - 1];
+      return { pos: last, i: r.length - 2, f: 1, names: nm,
+        from: nm[nm.length - 2] || nm[0], to: nm[nm.length - 1],
+        phase: `${nm[nm.length - 1]} — berthed`, atPort: true, pct: 1 };
+    }
+    const i = Math.max(0, Math.min(idx, r.length - 2));
+    const a = r[i], b = r[i+1];
+    if(!a || !b) return null;
+    pos = [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f];
+    atPort = f < 0.01;
+    done = i + f;
+    total = Math.max(1, r.length - 1);
+  }
+
+  if (s.etaActual && !hasDensePos) {
+    const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
+    const r = posRoute.map(wrap);
     const last = r[r.length - 1];
     return { pos: last, i: r.length - 2, f: 1, names: nm,
       from: nm[nm.length - 2] || nm[0], to: nm[nm.length - 1],
       phase: `${nm[nm.length - 1]} — berthed`, atPort: true, pct: 1 };
   }
-  const idx = Number.isFinite(s.idx) ? s.idx : 0;
-  const i = Math.max(0, Math.min(idx, r.length - 2));
-  const f = Number.isFinite(s.ratio) ? Math.max(0, Math.min(1, s.ratio)) : 0;
-  const a = r[i], b = r[i+1];
-  if(!a || !b) return null;
-  const pos = [a[0] + (b[0]-a[0])*f, a[1] + (b[1]-a[1])*f];
-  const atPort = f < 0.01;
-  const done = i + f, total = Math.max(1, r.length - 1);
+
+  const safeI = Math.max(0, Math.min(idx, nm.length - 2));
 
   /* 이벤트 기반 displayPosition 오버라이드 */
-  const disp = getDisplayCoord(s); // null 또는 { coord: [lat,lng], loc: string }
+  const disp = getDisplayCoord(s);
   const c = disp ? disp.coord : null;
   const finalPos    = c ? [c[0], c[1] < -30 ? c[1] + 360 : c[1]] : pos;
   const finalAtPort = c ? true : atPort;
   const finalPhase  = c
     ? `${disp.loc} — berthed`
-    : (atPort ? `${nm[i]} — berthed` : `${nm[i]} → ${nm[i+1]}`);
+    : (atPort ? `${nm[safeI]} — berthed` : `${nm[safeI]} → ${nm[safeI+1]}`);
 
-  return { pos: finalPos, i, f, names: nm, from: nm[i], to: nm[i+1],
+  return { pos: finalPos, i: safeI, f, names: nm, from: nm[safeI], to: nm[safeI+1],
     phase: finalPhase, atPort: finalAtPort, pct: done / total };
 }
 

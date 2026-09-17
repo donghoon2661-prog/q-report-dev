@@ -510,6 +510,231 @@ function mapFresh(old) {
   return (Date.now() - t) < MAP_TTL_H * 3600000;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   MARITIME ROUTING — carrier-independent
+   입력: rawRoute [[lat,lng], ...]  (HMM routePoints 또는 타 선사 동일 형식)
+   출력: dense route [[lat,lng], ...] — unwrap 적용, 날짜변경선 연속 경도
+   선사별 "rawRoute를 얻는 방법"은 각 수집 함수(fetchMap 등)에서 담당.
+   이 함수군은 rawRoute를 받아 공통 처리만 한다.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* haversine 거리 (km) — p1,p2=[lng,lat] (GeoJSON 표준) */
+function marnetHaversine(p1, p2) {
+  const R = 6371;
+  const la1 = Math.PI / 180 * p1[1], lo1 = Math.PI / 180 * p1[0];
+  const la2 = Math.PI / 180 * p2[1], lo2 = Math.PI / 180 * p2[0];
+  const a = Math.sin((la2-la1)/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin((lo2-lo1)/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+/* 경도를 [-180, 180] 범위로 정규화 (HMM normalizeLng 동일) */
+function marnetNormLng(lng) {
+  return ((((lng + 180) % 360) + 360) % 360) - 180;
+}
+
+/* compact KV 포맷 → adjacency list 재구성
+   compact: { nodes:[[lng,lat],...], edges:[[i1,i2,dist],...] }
+   반환: { nodes: { id: {lng,lat,adj:[{to,dist}]} } }
+*/
+function buildMarnetAdjList(compact) {
+  const nodes = {};
+  for (const [lng, lat] of compact.nodes) {
+    const id = lng.toFixed(4) + "," + lat.toFixed(4);
+    nodes[id] = { lng, lat, adj: [] };
+  }
+  const nodeKeys = Object.keys(nodes);
+  for (const [i1, i2, dist] of compact.edges) {
+    const id1 = nodeKeys[i1], id2 = nodeKeys[i2];
+    if (id1 && id2) {
+      nodes[id1].adj.push({ to: id2, dist });
+      nodes[id2].adj.push({ to: id1, dist });
+    }
+  }
+  return { nodes };
+}
+
+/* 가장 가까운 marnet 노드 반환 (HMM findNearestNode 동일)
+   latlon=[lat,lng] (routePoints 형식) */
+function marnetNearestNode(graph, latlon) {
+  const nlng = marnetNormLng(latlon[1]);
+  const nlat = latlon[0];
+  let bestId = null, bestD = Infinity;
+  for (const [id, n] of Object.entries(graph.nodes)) {
+    const d = marnetHaversine([nlng, nlat], [n.lng, n.lat]);
+    if (d < bestD) { bestD = d; bestId = id; }
+  }
+  return bestId;
+}
+
+/* Priority-Queue Dijkstra (HMM dijkstra와 동일 로직, min-heap 구현) */
+function marnetDijkstra(graph, startId, endId) {
+  if (startId === endId) return [startId];
+  const nodes = graph.nodes;
+  const dist = { [startId]: 0 };
+  const prev = {};
+  /* 간단한 min-heap: [dist, id] 쌍 배열 */
+  const heap = [[0, startId]];
+  const visited = new Set();
+  while (heap.length) {
+    heap.sort((a, b) => a[0] - b[0]);          // 소규모(6129 node)에서 충분
+    const [d, u] = heap.shift();
+    if (visited.has(u)) continue;
+    visited.add(u);
+    if (u === endId) break;
+    for (const { to, dist: w } of nodes[u].adj) {
+      const nd = d + w;
+      if (dist[to] === undefined || nd < dist[to]) {
+        dist[to] = nd; prev[to] = u;
+        heap.push([nd, to]);
+      }
+    }
+  }
+  if (!prev[endId]) return null;
+  const path = []; let cur = endId;
+  while (cur) { path.unshift(cur); cur = prev[cur]; }
+  return path;
+}
+
+/* 한 구간 [start, end] maritime 경로 계산 (HMM getSeaSegment 동일)
+   start/end = [lat,lng] */
+function marnetSegment(graph, start, end) {
+  const sId = marnetNearestNode(graph, start);
+  const eId = marnetNearestNode(graph, end);
+  if (!sId || !eId) return [start, end];
+  const path = marnetDijkstra(graph, sId, eId);
+  if (!path) return [start, end];
+  const seg = [start];
+  for (const id of path) {
+    const n = graph.nodes[id];
+    seg.push([n.lat, n.lng]);
+  }
+  seg.push(end);
+  return seg;
+}
+
+/* unwrapCoords — 이전 좌표 기준 경도 연속 보정 (HMM unwrapCoords 동일)
+   coords=[[lat,lng],...], startRefLng=이전 구간 마지막 경도(null이면 첫 점 기준) */
+function marnetUnwrap(coords, startRefLng) {
+  if (!coords || coords.length === 0) return [];
+  const out = [];
+  let cur = startRefLng !== null && startRefLng !== undefined
+    ? startRefLng : marnetNormLng(coords[0][1]);
+  let sl = coords[0][1];
+  while (sl - cur > 180)  sl -= 360;
+  while (sl - cur < -180) sl += 360;
+  cur = sl;
+  out.push([Math.max(-90, Math.min(90, coords[0][0])), cur]);
+  for (let i = 1; i < coords.length; i++) {
+    let lng = coords[i][1];
+    while (lng - cur > 180)  lng -= 360;
+    while (lng - cur < -180) lng += 360;
+    cur = lng;
+    out.push([Math.max(-90, Math.min(90, coords[i][0])), cur]);
+  }
+  return out;
+}
+
+/* densify — 구간마다 segments-1개 중간점 선형 보간 (HMM densifyCoords 동일) */
+function marnetDensify(coords, segments) {
+  const s = segments || 5;
+  const out = [];
+  for (let i = 0; i < coords.length - 1; i++) {
+    out.push(coords[i]);
+    for (let j = 1; j < s; j++) {
+      const f = j / s;
+      out.push([coords[i][0]*(1-f)+coords[i+1][0]*f,
+                coords[i][1]*(1-f)+coords[i+1][1]*f]);
+    }
+  }
+  out.push(coords[coords.length - 1]);
+  return out;
+}
+
+/* Chaikin smooth 2회 (HMM chaikinSmooth 동일) */
+function marnetSmooth(coords) {
+  if (coords.length < 3) return coords;
+  let cur = coords;
+  for (let it = 0; it < 2; it++) {
+    const nxt = [cur[0]];
+    for (let j = 0; j < cur.length - 1; j++) {
+      const p0 = cur[j], p1 = cur[j+1];
+      nxt.push([0.75*p0[0]+0.25*p1[0], 0.75*p0[1]+0.25*p1[1]]);
+      nxt.push([0.25*p0[0]+0.75*p1[0], 0.25*p0[1]+0.75*p1[1]]);
+    }
+    nxt.push(cur[cur.length - 1]);
+    cur = nxt;
+  }
+  return cur;
+}
+
+/* ── 공통 진입점 ─────────────────────────────────────────────────────
+   computeMaritimeRoute(graph, rawRoute)
+     graph    : buildMarnetAdjList()로 구성된 marnet 그래프
+     rawRoute : [[lat,lng], ...] — 기항지 좌표 (선사 무관)
+   반환: dense maritime route [[lat,lng], ...] — unwrap 완료 (연속 경도)
+         계산 실패 시 rawRoute 그대로 반환
+   ─────────────────────────────────────────────────────────────────── */
+function computeMaritimeRoute(graph, rawRoute) {
+  if (!graph || !Array.isArray(rawRoute) || rawRoute.length < 2) return rawRoute;
+  try {
+    const full = [];
+    let lastLng = null;
+    for (let i = 0; i < rawRoute.length - 1; i++) {
+      const seg = marnetSegment(graph, rawRoute[i], rawRoute[i+1]);
+      let unwrapped = marnetUnwrap(seg, lastLng);
+      if (unwrapped.length > 2) {
+        unwrapped = marnetDensify(unwrapped, 5);
+        unwrapped = marnetSmooth(unwrapped);
+      }
+      /* 첫 구간 이후: 이전 구간 마지막 점과 중복되는 첫 점 제거 */
+      if (full.length > 0) unwrapped = unwrapped.slice(1);
+      full.push(...unwrapped);
+      lastLng = full.length ? full[full.length - 1][1] : lastLng;
+    }
+    return full.length >= 2 ? full : rawRoute;
+  } catch (e) {
+    console.error("[computeMaritimeRoute] failed", String(e));
+    return rawRoute;
+  }
+}
+
+/* /collect-marnet 전용: marnet.geojson → compact graph → KV 저장 */
+async function collectMarnet(env) {
+  const MARNET_URL =
+    "https://www.hmm21.com/js/e-service/general/trackNTrace/marnet_densified.geojson?v=1.02";
+  const r = await fetch(MARNET_URL, {
+    headers: {
+      "User-Agent": UA,
+      "Referer": "https://www.hmm21.com/e-service/general/trackNTrace/trackMap.do"
+    }
+  });
+  if (!r.ok) throw new Error("marnet fetch failed: " + r.status);
+  const geojson = await r.json();
+
+  /* geojson → compact { nodes:[[lng,lat],...], edges:[[i1,i2,dist],...] } */
+  const nodeIndex = {};
+  const nodes = [];
+  const edges = [];
+  for (const feat of geojson.features) {
+    const coords = feat.geometry.coordinates;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p1 = coords[i], p2 = coords[i+1];
+      const k1 = p1[0].toFixed(4) + "," + p1[1].toFixed(4);
+      const k2 = p2[0].toFixed(4) + "," + p2[1].toFixed(4);
+      if (!(k1 in nodeIndex)) { nodeIndex[k1] = nodes.length; nodes.push([p1[0], p1[1]]); }
+      if (!(k2 in nodeIndex)) { nodeIndex[k2] = nodes.length; nodes.push([p2[0], p2[1]]); }
+      const dist = Math.round(marnetHaversine(p1, p2) * 100) / 100;
+      edges.push([nodeIndex[k1], nodeIndex[k2], dist]);
+    }
+  }
+  const compact = { nodes, edges, fetchedAt: new Date().toISOString().slice(0,16)+"Z", version: "1.02" };
+  const payload = JSON.stringify(compact);
+  await env.OQC.put("marnet:graph", payload);
+  return { nodes: nodes.length, edges: edges.length, bytes: payload.length };
+}
+
+
+
 
 /* ---------- 롤오버 / 지연 판정 ---------- */
 const dayMs = 86400000;
@@ -1533,7 +1758,14 @@ async function collectMaps(env, forceBkg = []) {
   const forceSet = new Set(forceBkg.map(b => b.trim().toUpperCase()));
   const byBkg = new Map(shipments.map(s => [s.booking, s]));
   const MAP_FIELDS = new Set(["route","names","mapAt","idx","ratio","namedPorts"]);
-  const MAP_FIELDS_SAVE = new Set(["route","names","mapAt","idx","ratio","namedPorts","mapError"]);
+  const MAP_FIELDS_SAVE = new Set(["route","rawRoute","names","mapAt","idx","ratio","namedPorts","mapError"]);
+
+  /* marnet graph 로드 — collectMaps 호출당 1회만 구성, 모든 부킹이 공유 */
+  let maritimeGraph = null;
+  try {
+    const graphRaw = await env.OQC.get("marnet:graph");
+    if (graphRaw) maritimeGraph = buildMarnetAdjList(JSON.parse(graphRaw));
+  } catch (e) { console.error("[collectMaps] marnet graph load failed", String(e)); }
 
   /* 수집 대상: etaActual 아닌 것 중 강제 대상이거나 지도 미보유/만료된 것
      spDep(Gate In) 없는 부킹은 아직 출발 전이므로 지도 수집 제외 */
@@ -1571,6 +1803,12 @@ async function collectMaps(env, forceBkg = []) {
           }
         }
         delete item.mapError;
+        /* maritime routing: rawRoute 저장 후 dense route 계산 */
+        if (maritimeGraph && Array.isArray(item.route) && item.route.length >= 2) {
+          item.rawRoute = item.route;  // HMM routePoints 원본 보존
+          const denseResult = computeMaritimeRoute(maritimeGraph, item.rawRoute);
+          if (denseResult && denseResult.length >= 2) item.route = denseResult;
+        }
       } catch (e) {
         stillFailing.push(bkg);
         /* 기존 route가 있으면 mapError 쓰지 않음 — ok 상태 유지 */
@@ -2165,6 +2403,16 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       try { out.lastrun = JSON.parse((await env.OQC.get("lastrun")) || "null"); } catch (_) {}
       try { out.sessionLog = await env.OQC.get("sessionLog"); } catch (_) {}
       return json(out);
+    }
+
+    if (url.pathname === "/collect-marnet" && req.method === "POST") {
+      if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+      try {
+        const result = await collectMarnet(env);
+        return json({ ok: true, ...result });
+      } catch (e) {
+        return json({ error: String(e.message || e) }, 502);
+      }
     }
 
     if (url.pathname === "/collect" && req.method === "POST") {

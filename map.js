@@ -170,6 +170,17 @@ function locate(s){
   if(!Array.isArray(s.route) || s.route.length < 2) return null;
   const nm = portNames(s);
 
+  /* etaActual(POD 실제 도착)이면 dense/non-dense 구분 없이 항상 100% 도착으로 처리
+     (hasDensePos 분기보다 먼저 체크 — dense route라도 도착한 배는 무조건 100%) */
+  if (s.etaActual) {
+    const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
+    const r = posRoute.map(wrap);
+    const last = r[r.length - 1];
+    return { pos: last, i: r.length - 2, f: 1, names: nm,
+      from: nm[nm.length - 2] || nm[0], to: nm[nm.length - 1],
+      phase: `${nm[nm.length - 1]} — berthed`, atPort: true, pct: 1 };
+  }
+
   const idx = Number.isFinite(s.idx) ? s.idx : 0;
   const f   = Number.isFinite(s.ratio) ? Math.max(0, Math.min(1, s.ratio)) : 0;
 
@@ -224,12 +235,6 @@ function locate(s){
     /* 기존 로직: rawRoute(또는 route) 직선 보간 */
     const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
     const r = posRoute.map(wrap);
-    if(s.etaActual){
-      const last = r[r.length - 1];
-      return { pos: last, i: r.length - 2, f: 1, names: nm,
-        from: nm[nm.length - 2] || nm[0], to: nm[nm.length - 1],
-        phase: `${nm[nm.length - 1]} — berthed`, atPort: true, pct: 1 };
-    }
     const i = Math.max(0, Math.min(idx, r.length - 2));
     const a = r[i], b = r[i+1];
     if(!a || !b) return null;
@@ -237,15 +242,6 @@ function locate(s){
     atPort = f < 0.01;
     done = i + f;
     total = Math.max(1, r.length - 1);
-  }
-
-  if (s.etaActual && !hasDensePos) {
-    const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
-    const r = posRoute.map(wrap);
-    const last = r[r.length - 1];
-    return { pos: last, i: r.length - 2, f: 1, names: nm,
-      from: nm[nm.length - 2] || nm[0], to: nm[nm.length - 1],
-      phase: `${nm[nm.length - 1]} — berthed`, atPort: true, pct: 1 };
   }
 
   const safeI = Math.max(0, Math.min(idx, nm.length - 2));

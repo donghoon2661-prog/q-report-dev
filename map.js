@@ -25,31 +25,17 @@ const ROUTE_PS5 = [
   [10.33, 107.07],    /* BA RIA VUNG TAU */
   [16.5,  107.5],     /* 베트남 해안 북상 */
   [20.93, 107.08],    /* HAI PHONG */
-  /* Hai Phong → Los Angeles great-circle (25분할) */
-  [24.327, 110.133],
-  [27.659, 113.352],
-  [30.912, 116.771],
-  [34.069, 120.427],
-  [37.109, 124.361],
-  [40.009, 128.616],
-  [42.74, 133.238],
-  [45.268, 138.268],
-  [47.555, 143.743],
-  [49.56, 149.686],
-  [51.235, 156.093],
-  [52.536, 162.928],
-  [53.422, 170.111],
-  [53.862, 177.52],
-  [53.839, -174.996],
-  [53.354, -167.602],
-  [52.425, -160.449],
-  [51.085, -153.654],
-  [49.374, -147.292],
-  [47.34, -141.396],
-  [45.027, -135.966],
-  [42.477, -130.979],
-  [39.728, -126.396],
-  [36.813, -122.174],
+  [21.5,  108.5],     /* 통킹만 */
+  [22.5,  113.5],     /* 중국 광둥 해안 */
+  [24.0,  118.0],     /* 대만 해협 */
+  [26.0,  121.5],     /* 대만 북쪽 */
+  [30.0,  130.0],     /* 일본 규슈 */
+  [35.0,  141.0],     /* 일본 근해 */
+  [40.0,  155.0],     /* 북태평양 진입 */
+  [47.0,  175.0],     /* 북태평양 중간 */
+  [47.0, -170.0],     /* 날짜변경선 통과 */
+  [43.0, -150.0],     /* 태평양 동부 */
+  [36.0, -130.0],     /* LA 접근 */
   [33.76, -118.27],   /* LOS ANGELES */
 ];
 
@@ -63,14 +49,12 @@ function detectService(s) {
   return { svc: null, inferred: false };
 }
 
-/* 노선별 항로 좌표 반환 — wrap() 적용으로 경도 연속 보장 (날짜변경선 통과 시 >180 양수 경도) */
+/* 노선별 항로 좌표 반환 (경도 래핑 포함) */
 function getServiceRoute(svc) {
   const r = svc === 'PS3' ? ROUTE_PS3 : svc === 'PS5' ? ROUTE_PS5 : null;
   if (!r) return null;
-  return r.map(wrap);
+  return r.map(p => p[1] < -30 ? [p[0], p[1] + 360] : p);
 }
-
-
 
 /* ===== map.js — 지도 · 좌표 · 위치 계산 ===== */
 
@@ -150,21 +134,6 @@ function synthRoute(s){
 /* ---------- 좌표 유틸 ---------- */
 const wrap = p => [p[0], p[1] < -30 ? p[1] + 360 : p[1]];
 const unwrap = l => ((l + 180) % 360) - 180;
-
-/* 비정상 좌표 점프 필터 — wrap() 적용 후 사용, 원본 s.route 불변 */
-function filterBadJumps(pts) {
-  if (pts.length < 2) return pts;
-  const out = [pts[0]];
-  for (let i = 1; i < pts.length; i++) {
-    const prev = out[out.length - 1];
-    const curr = pts[i];
-    const dLng = Math.abs(curr[1] - prev[1]);
-    const dLat = Math.abs(curr[0] - prev[0]);
-    if (dLng > 100 || dLat > 50) continue;
-    out.push(curr);
-  }
-  return out;
-}
 
 function locate(s){
   if(!Array.isArray(s.route) || s.route.length < 2) return null;
@@ -322,24 +291,22 @@ function initMap(data){
 
   const portSeen = {};
   data.shipments.forEach(s=>{
-    /* dense route: route에 기항지보다 훨씬 많은 좌표가 있으면 marnet routing 완료 상태
-       기항지 마커는 rawRoute(원본) 또는 route(dense 미도입 시) 기반으로 표시 */
-    const hasDense = Array.isArray(s.route) && s.route.length > 10;
-    const portRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
     const det = detectService(s);
+    /* dense route: marnet routing 완료 상태 (route 좌표가 기항지보다 훨씬 많음) */
+    const hasDense = Array.isArray(s.route) && s.route.length > 10;
+    /* 기항지 마커용 좌표: rawRoute(원본 기항지) 우선, 없으면 route */
+    const portRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
     const svcRoute = hasDense ? null : (det.svc ? getServiceRoute(det.svc) : null);
-
     if (!hasDense && !svcRoute && (!Array.isArray(s.route) || s.route.length < 2)) {
-      markers.push(null); return;
+      return;
     }
 
     if (hasDense) {
-      /* marnet dense route — 선사 무관, route 좌표를 그대로 polyline으로 그린다
-         unwrapCoords 완료된 연속 경도이므로 wrap/split 불필요 */
+      /* marnet dense route — unwrapCoords 완료된 연속 경도, 선사 무관 */
       L.polyline(s.route, {
         color: '#1E3A4C', weight: 1.5, opacity: 0.9
       }).addTo(map);
-      /* 기항지 마커: rawRoute(또는 route) 기반 */
+      /* 기항지 마커: rawRoute 기반 */
       const r = portRoute.map(wrap);
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
@@ -400,7 +367,10 @@ function initMap(data){
     clusters.push(grp);
   }
 
-  /* 클러스터별 마커 생성 */
+  /* 클러스터별 마커 생성
+     markers[i] = i번째 shipment의 마커 (app.js select()가 목록 인덱스로 찾음)
+     클러스터에 묶인 shipment들은 모두 같은 클러스터 마커를 가리킨다 */
+  markers = new Array(data.shipments.length).fill(null);
   clusters.forEach(grp => {
     const first = located[grp[0]];
     const lat = first.lat, lng = first.lng;
@@ -416,7 +386,7 @@ function initMap(data){
       }).addTo(map);
       m.bindTooltip(`${s.vessel} ${s.voyage}`, {className:'vsl-tip', direction:'top', offset:[0,-6]});
       m.on('click', () => { select(s, idx, false); showPO(s, idx); });
-      markers.push(m);
+      markers[idx] = m;
     } else {
       /* 클러스터 마커 — 숫자 표시 */
       const vessels = grp.map(i => `${located[i].s.vessel} ${located[i].s.voyage}`).join('<br>');
@@ -431,8 +401,9 @@ function initMap(data){
         const { s, idx } = located[grp[0]];
         select(s, idx, false); showPO(s, idx);
       });
-      markers.push(m);
+      grp.forEach(i => { markers[located[i].idx] = m; });
     }
   });
-  if(markers.filter(Boolean).length) map.fitBounds(L.featureGroup(markers.filter(Boolean)).getBounds().pad(0.35));
+  const uniq = [...new Set(markers.filter(Boolean))];
+  if(uniq.length) map.fitBounds(L.featureGroup(uniq).getBounds().pad(0.35));
 }

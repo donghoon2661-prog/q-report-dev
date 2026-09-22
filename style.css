@@ -673,8 +673,6 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 .err-row:last-child{border-bottom:none}
 .err-msg{color:#e5484d;word-break:break-all}
 .err-time{color:rgba(229,72,77,.6);white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums}
-  padding:10px 12px;margin-top:8px;font-size:11px;color:#E5484D;
-  font-family:'IBM Plex Mono',monospace;line-height:1.7}
 .sys-retry{background:none;border:1px solid #F2C14E;color:#F2C14E;
   font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;cursor:pointer;white-space:nowrap}
 .sys-retry:hover{background:var(--surface-1)}

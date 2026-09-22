@@ -197,7 +197,7 @@ function renderHistoryDetail(monthKey){
     return `<tr>
       <td><span class="vname">${r.vessel||"—"}</span><span class="vbkg">${r.booking}</span></td>
       <td class="route">${(r.pol||"").split(",")[0]||"—"} &rarr; ${(r.pod||"").split(",")[0]||"—"}</td>
-      <td>${histShortDate(r.polDep)} <span class="plandate">(${histShortDate(r.polDep)})</span></td>
+      <td>${histShortDate(r.polDepActualDate || r.polDep)} <span class="plandate">(${histShortDate(r.polDep)})</span></td>
       <td class="dwell">${dwellTxt}</td>
       <td>${histShortDate(r.actualEta)} <span class="plandate">(${histShortDate(r.planEta)})</span></td>
       <td class="transit-cell">${transitTxt}</td>

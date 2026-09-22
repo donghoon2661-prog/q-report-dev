@@ -1908,7 +1908,69 @@ async function collectRawMaterials(env) {
   }
   const payload = { collected_at: new Date().toISOString(), data: results };
   await env.OQC.put('raw_material_latest', JSON.stringify(payload), { expirationTtl: 86400 * 3 });
+  /* 누적 저장 실패가 latest 저장(Cowork용)에 영향 주지 않도록 분리 */
+  try { payload.history = await mergeRawHistory(env, results); }
+  catch (e) { payload.history = { error: e.message }; }
   return payload;
+}
+
+/* ── 원자재 가격 누적 (KV raw_material_history, TTL 없음) ──────────
+   구조: { updated, source, units:{품목:단위}, items:{품목:{"YYYY-MM-DD":가격}} }
+   - 매일 받은 최근 7일치를 기존 기록에 병합 (덮어쓰기 아님, 삭제 없음)
+   - 수집이 며칠 빠져도 다음 수집의 7일치로 빈 날이 자동 보충
+   - SunSirs 날짜는 MM/DD만 오므로 중국 기준 오늘 날짜로 연도를 추정 */
+const RAW_HISTORY_KEY = 'raw_material_history';
+const RAW_UNITS = { nbr: 'Yuan/mt', corrugated_paper: 'Yuan/mt', white_cardboard: 'Yuan/mt' };
+
+function rawDateToIso(mmdd, now = new Date()) {
+  const m = /^(\d{2})\/(\d{2})$/.exec(mmdd || "");
+  if (!m) return null;
+  const cn = new Date(now.getTime() + 8 * 3600000);           // UTC+8
+  let y = cn.getUTCFullYear();
+  const mk = (yy) => `${yy}-${m[1]}-${m[2]}`;
+  /* 오늘보다 미래 날짜면 작년 데이터 (예: 1월 초에 받은 12/30) */
+  if (mk(y) > cn.toISOString().slice(0, 10)) y -= 1;
+  return mk(y);
+}
+
+/* strict=true(쓰기 경로): 읽기·파싱 실패 시 예외 → 기존 누적 데이터를 빈 값으로 덮어쓰지 않음
+   키가 아예 없을 때(null)만 빈 구조로 시작 */
+async function readRawHistory(env, strict = false) {
+  const empty = () => ({ source: 'sunsirs', units: {}, items: {} });
+  let raw;
+  try { raw = await env.OQC.get(RAW_HISTORY_KEY); }
+  catch (e) { if (strict) throw new Error('history read failed: ' + e.message); return empty(); }
+  if (raw === null) return empty();
+  let h;
+  try { h = JSON.parse(raw); }
+  catch (e) { if (strict) throw new Error('history parse failed — 덮어쓰기 중단'); return empty(); }
+  if (!h || typeof h !== 'object' || !h.items) {
+    if (strict) throw new Error('history 구조 이상 — 덮어쓰기 중단');
+    return empty();
+  }
+  if (!h.units) h.units = {};
+  return h;
+}
+
+async function mergeRawHistory(env, results) {
+  const h = await readRawHistory(env, true);
+  let added = 0, changed = 0;
+  for (const [name, res] of Object.entries(results || {})) {
+    if (!res || !Array.isArray(res.rows)) continue;          // 수집 실패 품목은 건너뜀
+    const item = h.items[name] || (h.items[name] = {});
+    if (RAW_UNITS[name]) h.units[name] = RAW_UNITS[name];
+    for (const r of res.rows) {
+      const d = rawDateToIso(r.date);
+      if (!d || !Number.isFinite(r.price) || r.price <= 0) continue;
+      if (item[d] === undefined) added++;
+      else if (item[d] !== r.price) changed++;
+      item[d] = r.price;
+    }
+  }
+  h.updated = new Date().toISOString();
+  await env.OQC.put(RAW_HISTORY_KEY, JSON.stringify(h));
+  const days = Object.fromEntries(Object.entries(h.items).map(([k, v]) => [k, Object.keys(v).length]));
+  return { added, changed, days };
 }
 
 export default {
@@ -1988,6 +2050,20 @@ export default {
     return new Response(raw, { headers: { 'Content-Type': 'application/json' } });
   }
   // ── END raw-material-latest ──────────────────────────────────────
+
+  // ── 원자재 누적 가격 조회 (공개) ?from=YYYY-MM-DD&to=YYYY-MM-DD ──────
+  if (url.pathname === '/raw-material-history') {
+    const h = await readRawHistory(env);
+    const from = url.searchParams.get('from') || '';
+    const to   = url.searchParams.get('to')   || '9999';
+    if (from || url.searchParams.get('to')) {
+      for (const k of Object.keys(h.items)) {
+        h.items[k] = Object.fromEntries(Object.entries(h.items[k]).filter(([d]) => d >= from && d <= to));
+      }
+    }
+    return new Response(JSON.stringify(h), { headers: JH });
+  }
+  // ── END raw-material-history ─────────────────────────────────────
 
   // ── TEST: SunSirs 접근 테스트 (임시, DEV only) ──────────────────
   if (url.pathname === '/test-sunsirs') {
@@ -2460,7 +2536,7 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
     /* ── /backup : KV 전체 스냅샷 반환 (GitHub Actions 주간 백업용, X-Refresh-Key 인증) ── */
     if (url.pathname === "/backup") {
       if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
-      const keys = ["shipments","bookings","pomap","poeta","pophoto","history","alertstate","lastrun","cursor","sessionLog"];
+      const keys = ["shipments","bookings","pomap","poeta","pophoto","history","alertstate","lastrun","cursor","sessionLog","raw_material_history"];
       const kv = {};
       for (const k of keys) {
         const v = await env.OQC.get(k, "text");
@@ -2508,6 +2584,16 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
           restored.push(k);
         } else { skipped.push(k); }
       }
+      /* 원자재 누적: 덮어쓰지 않고 병합 — 현재 KV 값이 우선, 빠진 날짜만 백업에서 채움 */
+      if (kv.raw_material_history && kv.raw_material_history.items) try {
+        const cur = await readRawHistory(env, true);
+        for (const [name, days] of Object.entries(kv.raw_material_history.items)) {
+          cur.items[name] = { ...days, ...(cur.items[name] || {}) };
+        }
+        cur.units = { ...(kv.raw_material_history.units || {}), ...cur.units };
+        await env.OQC.put(RAW_HISTORY_KEY, JSON.stringify(cur));
+        restored.push(RAW_HISTORY_KEY + " (merge)");
+      } catch (e) { skipped.push(RAW_HISTORY_KEY + ": " + e.message); }
       /* delayHistory:YYYY-MM, schedule:{bkg}, map:{bkg} 키 복원 */
       for (const [k, v] of Object.entries(kv)) {
         if (k.startsWith("delayHistory:") || k.startsWith("schedule:") || k.startsWith("map:")) {

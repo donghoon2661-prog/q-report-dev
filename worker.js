@@ -2563,8 +2563,9 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       const date = (body.date || "").trim(); // "YYYY-MM-DD" 형식
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "date must be YYYY-MM-DD" }, 400);
 
-      /* GitHub raw URL — public 리포이므로 토큰 불필요 */
-      const rawUrl = `https://raw.githubusercontent.com/donghoon2661-prog/q-report/main/backups/backup-${date}.json`;
+      /* GitHub raw URL — public 리포이므로 토큰 불필요. 저장소는 env.GITHUB_REPO(MAIN/DEV 각자)로 분리 */
+      const repo = env.GITHUB_REPO || "donghoon2661-prog/q-report";
+      const rawUrl = `https://raw.githubusercontent.com/${repo}/main/backups/backup-${date}.json`;
       const ghRes = await fetch(rawUrl);
       if (!ghRes.ok) return json({ error: `Backup file not found for ${date} (HTTP ${ghRes.status})` }, 404);
 

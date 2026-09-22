@@ -2,6 +2,9 @@ name = "kossan-oqc-dev"
 main = "worker.js"
 compatibility_date = "2026-08-27"
 
+[vars]
+GITHUB_REPO = "donghoon2661-prog/q-report-dev"
+
 [[kv_namespaces]]
 binding = "OQC"
 id = "06928d37132342acacf3a1696cef2553"

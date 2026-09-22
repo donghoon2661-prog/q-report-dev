@@ -98,8 +98,17 @@ async function loadCOA(){
   if(!files.length) throw new Error('All COA files failed to load');
   return {
     sheets: files.map(f => ({ name: f.name, sectors: f.sectors })),
-    detections: files.flatMap(f => f.detections.map(d => ({ ...d, sheet: d.sheet || f.name })))
+    detections: files.flatMap(f => f.detections.map(d => normalizeDet(d, f.name)))
   };
+}
+
+/* COA 파일마다 detection 형식이 달라도 화면에서는 같은 필드로 쓰도록 맞춘다.
+   구형식: gv / tier / cell · 신형식(06-16_to_07-11~): value·current_value, tier·cell 없음
+   tier는 grade로 보충 (A = S1 Off-spec, B·C = S2 근접) */
+function normalizeDet(d, sheetName){
+  const gv = d.gv ?? d.current_value ?? d.value;
+  const tier = d.tier || (d.grade === 'A' ? 'S1' : (d.grade === 'B' || d.grade === 'C') ? 'S2' : undefined);
+  return { ...d, sheet: d.sheet || sheetName, gv: gv ?? '—', tier, cell: d.cell || '—' };
 }
 
 function coaError(msg){
@@ -227,7 +236,7 @@ function rebuildDynamic(){
 function buildQuality(){
   const lots = [...new Set(DATA.sheets.flatMap(s=>s.sectors.map(x=>x.lot)))].sort();
   const lotMonth = l => {
-    const m = /^[A-Z](\d{2})(\d{2})/.exec(String(l||''));
+    const m = /^[A-Z0-9](\d{2})(\d{2})/.exec(String(l||'')); // 126050001 = 1·26·05·0001 → 2026-05
     return m ? '20'+m[1]+'-'+m[2] : 'unknown';
   };
   function widthMargin(rows){
@@ -341,7 +350,9 @@ function buildQuality(){
   };
   function draw(){
     const worst = lotWorst(curItem);
-    if(chart) chart.destroy();
+    /* 언어 토글로 buildQuality가 다시 돌면 이전 차트는 이전 클로저에 남아 있다 — 캔버스 기준으로 찾아서 정리 */
+    const prevChart = Chart.getChart(document.getElementById('chart'));
+    if(prevChart) prevChart.destroy();
     const barColor = worst.map(v=> v==null?qvar('line2','#2A3446'): isOff(curItem,v)?qvar('gA','#FF6D5E'): isNear(curItem,v)?qvar('gB','#F5B84F'):qvar('blue','#4DA3FF'));
     const ds=[{type:'bar',label:'Lot 최악값',data:worst,backgroundColor:barColor,borderRadius:5,maxBarThickness:52},
       {type:'line',label:'S1 한계',data:lots.map(()=>curItem.s1),borderColor:qvar('gA','#FF6D5E'),borderWidth:1.6,borderDash:[6,4],pointRadius:0}];
@@ -405,6 +416,10 @@ function buildQuality(){
 
   /* ── 백데이터 모달 ── */
   const overlay=document.getElementById('overlay');
+  /* 문서/창 단위 이벤트는 최초 1회만 바인딩 (언어 토글 때 중복 방지) */
+  const firstBind = !window.__qBound;
+  window.__qBound = true;
+  if(firstBind){
   document.getElementById('mClose').addEventListener('click',()=>{
     overlay.classList.remove('show');
     document.body.classList.remove('modal-open');
@@ -417,6 +432,7 @@ function buildQuality(){
     overlay.classList.remove('show');
     document.body.classList.remove('modal-open');
   }});
+  }
 
   const GROUPS=[
    [{ko:'수량',en:'Quantity'},[['cartons','Cartons'],['qty_max','Qty Max'],['qty_min','Qty Min']]],
@@ -484,17 +500,21 @@ function buildQuality(){
   const openTotal = DATA.detections.filter(d=>!d.resolved && d.grade==='A').length;
   document.getElementById('tbBadge').textContent = openTotal || '';
   if(!openTotal) document.getElementById('tbBadge').style.display='none';
+  /* draw는 buildQuality마다 새로 만들어지므로 최신 것을 window.repaintCharts로 호출 */
+  const redraw = ()=>{ if(window.repaintCharts) window.repaintCharts(); };
+  if(firstBind){
   document.querySelectorAll('.tabbar button').forEach(b=>{
     b.addEventListener('click',()=>{
       document.querySelectorAll('.tabbar button').forEach(x=>x.classList.remove('on'));
       b.classList.add('on');
       document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
       document.getElementById(b.dataset.panel).classList.add('active');
-      if(b.dataset.panel==='p-chart') requestAnimationFrame(()=>draw()); // 숨김 상태에서 초기화된 캔버스 재생성
+      if(b.dataset.panel==='p-chart') requestAnimationFrame(redraw); // 숨김 상태에서 초기화된 캔버스 재생성
       window.scrollTo({top:0});
     });
   });
-  mq.addEventListener('change',()=>requestAnimationFrame(()=>draw()));
-  window.addEventListener('orientationchange',()=>setTimeout(()=>draw(),250));
+  mq.addEventListener('change',()=>requestAnimationFrame(redraw));
+  window.addEventListener('orientationchange',()=>setTimeout(redraw,250));
+  }
 
 }

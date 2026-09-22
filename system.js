@@ -113,13 +113,14 @@ function renderSystemTab(){
       </span>
       <span>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          ${schedStatus}
-          <span class="sys-dim" style="font-size:10px">${schedAt?fmtSysTime(schedAt):'—'}</span>
+          <span data-role="sched-status">${schedStatus}</span>
+          <span class="sys-dim" data-role="sched-time" style="font-size:10px">${schedAt?fmtSysTime(schedAt):'—'}</span>
         </div>
         <div style="margin-top:4px">
           ${s.etaActual
             ? `<span style="font-size:10px;color:var(--fog)">도착 완료</span>`
             : `<button class="sys-retry" data-bkg="${s.booking}" style="font-size:10px;padding:2px 7px;border-color:#F2C14E;color:#F2C14E;background:none;border:1px solid #F2C14E">REFRESH</button>`}
+          <div data-role="sched-msg"></div>
         </div>
       </span>
       <span>
@@ -228,15 +229,17 @@ async function sysRetry(bkg, btn){
     const res = await r.json();
     if(!r.ok) throw new Error(`${res.error||'error'} [${res.hint||''}] (${r.status})`);
     if(row){
-      const cells = row.querySelectorAll('span');
+      const timeEl = row.querySelector('[data-role="sched-time"]');
+      const statusEl = row.querySelector('[data-role="sched-status"]');
+      const msgEl = row.querySelector('[data-role="sched-msg"]');
       const now = new Date();
-      cells[1].textContent = fmtDT(now.toISOString().slice(0,16));
+      if(timeEl) timeEl.textContent = fmtDT(now.toISOString().slice(0,16));
       if(res.savedToData){
-        cells[2].innerHTML = `<span class="sys-ok">ok</span>`;
-        cells[3].innerHTML = '';
+        if(statusEl) statusEl.innerHTML = `<span class="sys-ok">ok</span>`;
+        if(msgEl) msgEl.innerHTML = '';
       } else {
-        cells[2].innerHTML = `<span class="sys-warn">⚠ 조회 성공, KV 저장 실패</span>`;
-        cells[3].innerHTML = res.saveWarn
+        if(statusEl) statusEl.innerHTML = `<span class="sys-warn">⚠ 조회 성공, KV 저장 실패</span>`;
+        if(msgEl) msgEl.innerHTML = res.saveWarn
           ? `<span class="sys-bad" style="font-size:10px">${res.saveWarn}</span>` : '';
       }
     }
@@ -262,13 +265,13 @@ async function sysRetry(bkg, btn){
   } catch(e){
     if(btn){ btn.disabled=false; btn.textContent='RETRY'; }
     if(row){
-      const cells = row.querySelectorAll('span');
+      const msgEl = row.querySelector('[data-role="sched-msg"]');
       const _m=e.message||"failed";
         const _hint=(_m.match(/\[([^\]]+)\]/)||[])[1]||"";
         const _c=(_hint.match(/response\s+(\d{3})/)||[])[1]||(_m.match(/(\d{3})/)||[])[1]||"";
         const _l=(_hint.match(/-([A-Z]{3})\b/)||[])[1]||"";
         const _lbl=_c||_l?`Failed to retry (${[_c,_l].filter(Boolean).join(" · ")})`:"Failed to retry";
-        cells[3].innerHTML = `<span class="sys-bad" style="font-size:10px" title="${_hint||_m}">${_lbl}</span>`;
+        if(msgEl) msgEl.innerHTML = `<span class="sys-bad" style="font-size:10px" title="${_hint||_m}">${_lbl}</span>`;
     }
   }
 }

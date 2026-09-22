@@ -4,7 +4,8 @@
    출처:
    KR: law.go.kr (관보 기준), publicholidays.co.kr
    MY: 말레이시아 총리부 공식 자료 HKA-2026.pdf / HKA-2027 (연방 공휴일만)
-   US: OPM (Office of Personnel Management) 공식 스케줄
+   US: OPM (Office of Personnel Management) 공식 스케줄 — 단, 연방 대체공휴일이 아니라
+       실제 날짜로 표시 (worker.js weekly 리포트의 US_HOLIDAYS_WEEKLY와 기준 통일)
 
    * 표시: 이슬람력 기반, 날짜 변동 가능
    매년 연초에 해당 연도 데이터 추가.
@@ -105,7 +106,7 @@ const HOLIDAYS = {
     "2026-02-16": "Washington's Birthday",
     "2026-05-25": "Memorial Day",
     "2026-06-19": "Juneteenth",
-    "2026-07-03": "Independence Day (observed)",
+    "2026-07-04": "Independence Day",
     "2026-09-07": "Labor Day",
     "2026-10-12": "Columbus Day",
     "2026-11-11": "Veterans Day",
@@ -117,13 +118,13 @@ const HOLIDAYS = {
     "2027-01-18": "Martin Luther King Jr. Day",
     "2027-02-15": "Washington's Birthday",
     "2027-05-31": "Memorial Day",
-    "2027-06-18": "Juneteenth (observed)",
-    "2027-07-05": "Independence Day (observed)",
+    "2027-06-19": "Juneteenth",
+    "2027-07-04": "Independence Day",
     "2027-09-06": "Labor Day",
     "2027-10-11": "Columbus Day",
     "2027-11-11": "Veterans Day",
     "2027-11-25": "Thanksgiving Day",
-    "2027-12-24": "Christmas Day (observed)"
+    "2027-12-25": "Christmas Day"
   }
 };
 

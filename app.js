@@ -159,7 +159,7 @@ function showSide(s,L2){
     <div class="sb">${s.booking} · ${s.svc} · ${s.cntrQty||(s.containers&&s.containers.length)||"—"} CNTR${s.cntrType?" "+s.cntrType:""}</div>
     <dl>
       ${geo}
-      <dt>ROUTE</dt><dd>${dedupeLabels(nm).filter(Boolean).join(" → ")}</dd>
+      <dt>ROUTE</dt><dd>${dedupeLabels(nm).filter(n=>n && !/^P\d+$/.test(n)).join(" → ")}</dd>
       <dt>PKG ETD</dt><dd>${dtCell(s,"polDep")}</dd>
       ${s.spDep ? `<dt>GATE IN</dt><dd><span class="dt">${fmtDT(s.spDep)}</span><span class="sest">actual</span></dd>` : ""}
       <dt>SIN ETA</dt><dd>${dtCell(s,"tsArr")}</dd>
@@ -306,7 +306,7 @@ function gapBox(s){
   const d = poDelay(s);
   if(!d) return "";
   const g = d.gap;
-  const cls = g < 0 ? "g-early" : g <= 3 ? "g-ok" : g <= 6 ? "g-warn" : "g-bad";
+  const cls = g < 0 ? "g-early" : d.level==="alert" ? "g-bad" : d.level==="watch" ? "g-warn" : "g-ok";
   const txt = g > 0 ? "+" + g : String(g);
   const bell = etaChangedRecently(s.booking)
     ? `<span class="gapbang" data-b="${s.booking}" title="LA ETB changed within the last ${SIGNAL_DAYS} days — click for the log">!</span>` : "";

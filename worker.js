@@ -1400,7 +1400,12 @@ async function notifyArrivalIfNeeded(env, payload) {
   if (!targets.length) return { sent: 0 };
 
   const subject = `[Arrived] HMM Shipment Arrived — ${targets.length} booking(s): ${targets.map(s => s.booking).join(", ")}`;
-  const res = await sendMail(env, subject, arrivalMailBody(targets, payload.updated));
+  /* 수신자는 weekly 리포트와 동일 (TO/CC/BCC) */
+  const res = await sendMail(env, subject, arrivalMailBody(targets, payload.updated), {
+    to:  env.ALERT_TO_WEEKLY,
+    cc:  env.ALERT_CC_WEEKLY  || null,
+    bcc: env.ALERT_BCC_WEEKLY || null
+  });
 
   if (res.ok) {
     /* arrivalMailSent 플래그를 KV shipments에 반영 */

@@ -18,6 +18,10 @@
  * GET  /raw?bkg=          원본 응답 진단 (&full=1 → 평문 전체)
  * GET  /debug             접속 진단 (예산·lastrun 포함)
  *
+ * rev.19 — Workers Paid 플랜 전환에 맞춰 요청 예산 상향(40→200), MAX_PER_RUN 8→30.
+ *   collectSchedule은 애초에 커서 분할(pickSlice)을 쓰지 않고 매번 전체 목록을 처리하고
+ *   있었는데(죽은 코드였음), 무료 플랜 한도(50개)를 넘길까 봐 만든 값이라 유료 전환 후에는
+ *   불필요해져 죽은 코드를 지우고 값만 올렸다. 부킹이 늘어도 예산 한 번에 다 처리 가능.
  * rev.18 — pCloud showpublink 은 folderid 를 줘도 최상위 metadata 를 돌려주고
  *   하위 폴더 내용을 contents 안에 중첩해 담는다. 트리를 재귀로 훑도록 수정.
  * rev.17 — 사진 링크를 로트가 아니라 부킹 단위로 저장한다.
@@ -93,8 +97,8 @@ const PAGE_HEADERS = {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/* 한 실행에서 처리할 최대 부킹 수. 초과분은 커서로 다음 실행에 넘긴다. */
-const MAX_PER_RUN = 8;
+/* 한 실행에서 처리할 최대 부킹 수 (collectMaps 배치 크기 상한으로만 쓰임) */
+const MAX_PER_RUN = 30;
 /* 원 스케줄 대비 지연일 임계값.
    WATCH_D 미만은 정상, WATCH_D 이상은 주의, ALERT_D 이상은 경보. */
 const DELAY_WATCH_D = 3;    // 3일 이상 지연 → notice 메일
@@ -110,10 +114,10 @@ const MAX_SESSIONS = 8;
 const TRIES_PER_ITEM = 1;
 
 /* ---------- 요청 예산 ----------
-   Workers는 한 실행당 외부 요청 50개가 상한(KV 접근 포함). 40에서 시작해
-   남은 수를 보고 재시도 횟수를 줄인다. 예산을 다 쓰면 조용히 실패시켜
+   Workers Paid 플랜은 한 실행당 외부 요청 상한이 무료 플랜(50개)보다 훨씬 넉넉하다.
+   200에서 시작해 남은 수를 보고 재시도 횟수를 줄인다. 예산을 다 쓰면 조용히 실패시켜
    뒤쪽 부킹이 요청조차 못 보내는 상황을 막는다. */
-function newBudget(n = 40) { return { left: n, used: 0 }; }
+function newBudget(n = 200) { return { left: n, used: 0 }; }
 
 async function hmmFetch(budget, url, init, label, maxTries = 6) {
   let last;
@@ -1477,18 +1481,6 @@ async function assembleShipments(env) {
   }));
 
   return { saved, shipments: shipments.filter(Boolean) };
-}
-
-/* 커서로 이번 실행에서 처리할 구간을 정한다 (부킹이 MAX_PER_RUN을 넘을 때) */
-async function pickSlice(env, list) {
-  if (list.length <= MAX_PER_RUN) return { slice: list, cursor: 0, partial: false };
-  let cur = 0;
-  try { cur = parseInt(await env.OQC.get("cursor"), 10) || 0; } catch (_) {}
-  cur = ((cur % list.length) + list.length) % list.length;
-  const slice = [];
-  for (let i = 0; i < MAX_PER_RUN; i++) slice.push(list[(cur + i) % list.length]);
-  await env.OQC.put("cursor", String((cur + MAX_PER_RUN) % list.length));
-  return { slice, cursor: cur, partial: true };
 }
 
 /* ---------- 1단계: 일정 수집 (지도 제외) ----------

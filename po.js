@@ -118,6 +118,65 @@ function poSummary(booking){
   return `${parts.join(", ")} (${list.length})`;
 }
 
+/* ---------- 매핑 개별 삭제 ---------- */
+const escAttr = s => String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const lotOf = v => { const m = String(v).match(/^(\S+)/); return m ? m[1] : String(v); };
+
+/* 표 LOTS 칸 — LOT별 칩, 각 칩의 ✕로 그 LOT만 뺄 수 있다 */
+function poChipsHTML(k){
+  const list = PO[k] || [];
+  if(!list.length) return "—";
+  const lots = {};
+  list.forEach(v=>{ const l = lotOf(v); lots[l] = (lots[l]||0)+1; });
+  const chips = Object.keys(lots).map(l=>
+    `<span class="lotchip">${escAttr(l)} ×${lots[l]}<button class="polotdel" data-b="${escAttr(k)}" data-lot="${escAttr(l)}" title="Remove ${escAttr(l)} from ${escAttr(k)}" aria-label="Remove ${escAttr(l)}">✕</button></span>`);
+  return `${chips.join(", ")} (${list.length})`;
+}
+
+/* 서버의 최신 매핑을 받아 일부만 고친 뒤 통째로 저장(replace)한다.
+   최신본을 못 받으면 저장하지 않고, 한 번에 사라지는 항목이 예상보다 많으면 중단한다
+   (replace가 서버 데이터를 비워 버리는 사고 방지). */
+async function editMapping(mutate){
+  let j;
+  try{
+    const r = await fetch(PO_URL,{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    j = await r.json();
+  }catch(e){ return {ok:false, msg:"Couldn't load the latest mapping — "+(e.message||e)}; }
+  if(!j || typeof j.po!=="object" || j.po===null || Array.isArray(j.po))
+    return {ok:false, msg:"Unexpected server response — nothing was changed."};
+  const po = j.po, eta = j.eta||{}, photos = j.photos||{};
+  const count = () => Object.keys(po).length + Object.keys(eta).length + Object.keys(photos).length;
+  const before = count();
+  mutate(po, eta, photos);
+  if(before - count() > 3) return {ok:false, msg:"Too many entries would be removed — nothing was changed."};
+  return savePO(po, "replace", eta, photos);
+}
+
+async function onPoTableClick(e){
+  const rowBtn = e.target.closest(".podel"), lotBtn = e.target.closest(".polotdel");
+  if(!rowBtn && !lotBtn) return;
+  const st = document.getElementById("postatus");
+  let out, done;
+  if(rowBtn){
+    const b = rowBtn.dataset.b;
+    if(!confirm(`Delete ALL mapping data for ${b}?\n(PO/containers, original ETA and photo link)\nThis can't be undone.`)) return;
+    out = await editMapping((po,eta,ph)=>{ delete po[b]; delete eta[b]; delete ph[b]; });
+    done = `${b} deleted`;
+  }else{
+    const b = lotBtn.dataset.b, lot = lotBtn.dataset.lot;
+    const n = (PO[b]||[]).filter(v=>lotOf(v)===lot).length;
+    if(!confirm(`Remove "${lot}" (${n} entr${n===1?"y":"ies"}) from ${b}?\nThis can't be undone.`)) return;
+    out = await editMapping(po=>{
+      const rest = (po[b]||[]).filter(v=>lotOf(v)!==lot);
+      if(rest.length) po[b] = rest; else delete po[b];
+    });
+    done = `${lot} removed from ${b}`;
+  }
+  if(out.ok){ renderPOTable(); if(CUR) render(CUR); }
+  if(st) st.textContent = out.ok ? done + " — saved to server." : "Not deleted — " + out.msg;
+}
+
 let PO_SHOW_ARRIVED = false;
 function renderPOTable(){
   const el = document.getElementById("potable");
@@ -151,7 +210,7 @@ function renderPOTable(){
       ? `<p class="note"><button class="btn ghost" id="poarrived">${PO_SHOW_ARRIVED?"Hide":"Show"} arrived (${arrivedKeys.length})</button></p>`
       : "")
     + `<table><thead><tr>
-      <th>BOOKING</th><th>PKG ETD</th><th>LOTS</th><th>CNTR</th><th>PHOTOS</th><th>ORIGINAL ETA</th>
+      <th>BOOKING</th><th>PKG ETD</th><th>LOTS</th><th>CNTR</th><th>PHOTOS</th><th>ORIGINAL ETA</th><th></th>
     </tr></thead><tbody>`
     + shown.map(k=>{
         const known  = CUR && CUR.shipments.some(s=>s.booking===k);
@@ -161,13 +220,15 @@ function renderPOTable(){
         return `<tr>
           <td class="b">${k}${known?"":'<span class="l">(not tracked)</span>'}</td>
           <td class="l">${(()=>{const sh=CUR&&(CUR.shipments||[]).find(x=>x.booking===k); return sh?fmtDT(sh.polDep):"—";})()}</td>
-          <td class="l">${poSummary(k) || "—"}</td>
+          <td class="l">${poChipsHTML(k)}</td>
           <td>${nCntr || "—"}</td>
           <td class="${hasPic?"yes":"no"}">${hasPic?"O":"X"}</td>
           <td class="${eta?"":"no"}">${eta || "N/A"}</td>
+          <td><button class="podel" data-b="${escAttr(k)}" title="Delete all mapping data for ${escAttr(k)}" aria-label="Delete ${escAttr(k)}">✕</button></td>
         </tr>`;
       }).join("")
     + `</tbody></table>`;
+  el.onclick = onPoTableClick;
   const tg = document.getElementById("poarrived");
   if(tg) tg.addEventListener("click", ()=>{ PO_SHOW_ARRIVED = !PO_SHOW_ARRIVED; renderPOTable(); });
 }

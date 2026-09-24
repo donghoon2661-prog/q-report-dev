@@ -845,3 +845,14 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
   .cal-month-label{font-size:18px}
   #cal-detail{padding:10px 12px}
 }
+
+#hist-table .vbkg.has-photo{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+#hist-table .vbkg.has-photo:hover{color:var(--sail)}
+#hist-photo{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;
+  justify-content:center;z-index:200;padding:16px}
+#hist-photo[hidden]{display:none}
+#hist-photo-card{background:var(--hull);border:1px solid var(--line);border-radius:8px;
+  padding:20px 22px;width:100%;max-width:760px;max-height:90vh;overflow:auto}
+#hist-photo-title{font-family:'Barlow Condensed';font-weight:700;font-size:18px;letter-spacing:.04em}
+#hist-photo-close{cursor:pointer;color:var(--fog);font-size:16px}
+#hist-photo-sub{color:var(--fog);font-family:'IBM Plex Mono';font-size:11px;margin-bottom:14px}

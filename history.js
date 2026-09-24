@@ -195,7 +195,7 @@ function renderHistoryDetail(monthKey){
     const transitTxt = transit !== null ? `${transit}d` : "—";
 
     return `<tr>
-      <td><span class="vname">${r.vessel||"—"}</span><span class="vbkg">${r.booking}</span></td>
+      <td><span class="vname">${r.vessel||"—"}</span><span class="vbkg has-photo" data-bkg="${r.booking}" title="View photos">${r.booking}</span></td>
       <td class="route">${(r.pol||"").split(",")[0]||"—"} &rarr; ${(r.pod||"").split(",")[0]||"—"}</td>
       <td>${histShortDate(r.polDepActualDate || r.polDep)} <span class="plandate">(${histShortDate(r.polDep)})</span></td>
       <td class="dwell">${dwellTxt}</td>
@@ -204,6 +204,9 @@ function renderHistoryDetail(monthKey){
       <td><span class="hist-badge ${histBadgeClass(r.delayDays)}" data-idx="${i}">${histBadgeLabel(r.delayDays)}</span></td>
     </tr>`;
   }).join("");
+
+  tbody.querySelectorAll(".vbkg[data-bkg]").forEach(b=>
+    b.addEventListener("click",()=>openHistPhotos(b.dataset.bkg)));
 
   tbody.querySelectorAll(".hist-badge").forEach(b=>
     b.addEventListener("click",()=>openHistPopup(recs[parseInt(b.dataset.idx,10)])));
@@ -243,3 +246,61 @@ document.getElementById("hist-popup-close").addEventListener("click",()=>{
 document.getElementById("hist-popup").addEventListener("click",e=>{
   if(e.target.id==="hist-popup") document.getElementById("hist-popup").hidden = true;
 });
+
+/* ---------- 히스토리: 부킹번호 클릭 → 사진 팝업 ----------
+   MAPPING 표에서 숨겨진(도착 완료) 부킹도 PO/PHOTOS 데이터는 서버에 그대로 남아 있으므로
+   여기서 컨테이너별 사진을 그대로 열람할 수 있다. po.js의 renderGallery/poFolderName 재사용. */
+function openHistPhotos(booking){
+  let ov = document.getElementById("hist-photo");
+  if(!ov){
+    ov = document.createElement("div");
+    ov.id = "hist-photo";
+    ov.hidden = true;
+    ov.innerHTML = `<div id="hist-photo-card">
+        <div class="hist-popuphead"><span id="hist-photo-title"></span><span id="hist-photo-close">&times;</span></div>
+        <div id="hist-photo-sub"></div>
+        <div id="hist-photo-body"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = ()=>{ ov.hidden = true; };
+    ov.addEventListener("click", e=>{ if(e.target===ov) close(); });
+    document.getElementById("hist-photo-close").addEventListener("click", close);
+    document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !ov.hidden) close(); });
+  }
+  const list = (typeof PO!=="undefined" && PO[booking]) || [];
+  const code = (typeof PHOTOS!=="undefined" && PHOTOS[booking]) || null;
+  document.getElementById("hist-photo-title").textContent = booking;
+  document.getElementById("hist-photo-sub").textContent = `${list.length} container(s)`;
+  const body = document.getElementById("hist-photo-body");
+
+  if(!code){
+    body.innerHTML = `<div class="gal-title dim">No photo link registered for ${booking}</div>`;
+    ov.hidden = false; return;
+  }
+  if(!list.length){
+    body.innerHTML = `<div class="gal-title dim">No PO / container mapping for ${booking}</div>`;
+    ov.hidden = false; return;
+  }
+  body.innerHTML = `<div class="pogrid">${list.map((v,k)=>{
+      const m = v.match(/^(\S+)\s*\(Container\s*(\d+)\s*of\s*(\d+)\)/i);
+      const fn = poFolderName(v);
+      const attr = fn ? ` data-folder="${fn}" data-k="${k}" title="Click to view photos — ${fn}"` : "";
+      const cls = fn ? "pocell has-photo" : "pocell";
+      return m
+        ? `<div class="${cls}"${attr}><span class="po">${m[1]}</span><span class="cn">${m[2]} / ${m[3]}</span></div>`
+        : `<div class="${cls}"${attr}><span class="po">${v}</span></div>`;
+    }).join("")}</div>
+    <div class="gal-title">Select a container above to see its photos</div>
+    <div id="hist-photo-gal"></div>`;
+  const gal = document.getElementById("hist-photo-gal");
+  body.querySelectorAll(".pocell.has-photo").forEach(cell=>{
+    cell.addEventListener("click", ()=>{
+      body.querySelectorAll(".pocell").forEach(c=>c.classList.remove("sel"));
+      cell.classList.add("sel");
+      const label = (list[+cell.dataset.k]||"").replace(/\s*\(/," (");
+      gal.innerHTML = `<div class="galbox"></div>`;
+      renderGallery(gal.querySelector(".galbox"), label, code, cell.dataset.folder);
+    });
+  });
+  ov.hidden = false;
+}

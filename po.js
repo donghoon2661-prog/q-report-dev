@@ -118,6 +118,7 @@ function poSummary(booking){
   return `${parts.join(", ")} (${list.length})`;
 }
 
+let PO_SHOW_ARRIVED = false;
 function renderPOTable(){
   const el = document.getElementById("potable");
   if(!el) return;
@@ -127,12 +128,32 @@ function renderPOTable(){
   };
   const keys = [...new Set([].concat(
     Object.keys(PO||{}), Object.keys(POETA||{}), Object.keys(PHOTOS||{})
-  ))].sort((a,b)=>{ const d = etdOf(a) - etdOf(b); return d || String(a).localeCompare(String(b)); });
+  ))].sort((a,b)=>{
+    /* ORIGINAL ETA 오름차순 — ETA 없는 부킹은 뒤로, 같으면 ETD → 부킹번호순 */
+    const ea = POETA[a] || "9999-99-99", eb = POETA[b] || "9999-99-99";
+    if(ea !== eb) return ea < eb ? -1 : 1;
+    const d = etdOf(a) - etdOf(b);
+    return d || String(a).localeCompare(String(b));
+  });
   if(!keys.length){ el.innerHTML=""; return; }
-  el.innerHTML = `<table><thead><tr>
+  /* 숨김 기준: ACTUAL POD 확인(etaActual)된 부킹, 또는 수집 대상에서 빠졌고 원 ETA가 오늘 이전인 부킹.
+     데이터는 그대로 두고 표시만 거른다. */
+  const today = new Date().toISOString().slice(0,10);
+  const isArrived = k => {
+    const sh = CUR && (CUR.shipments||[]).find(x=>x.booking===k);
+    if(sh) return !!sh.etaActual;
+    const e = POETA[k];
+    return !!e && e < today;
+  };
+  const arrivedKeys = keys.filter(isArrived);
+  const shown = PO_SHOW_ARRIVED ? keys : keys.filter(k=>!isArrived(k));
+  el.innerHTML = (arrivedKeys.length
+      ? `<p class="note"><button class="btn ghost" id="poarrived">${PO_SHOW_ARRIVED?"Hide":"Show"} arrived (${arrivedKeys.length})</button></p>`
+      : "")
+    + `<table><thead><tr>
       <th>BOOKING</th><th>PKG ETD</th><th>LOTS</th><th>CNTR</th><th>PHOTOS</th><th>ORIGINAL ETA</th>
     </tr></thead><tbody>`
-    + keys.map(k=>{
+    + shown.map(k=>{
         const known  = CUR && CUR.shipments.some(s=>s.booking===k);
         const nCntr  = (PO[k]||[]).length;
         const hasPic = !!PHOTOS[k];
@@ -147,6 +168,8 @@ function renderPOTable(){
         </tr>`;
       }).join("")
     + `</tbody></table>`;
+  const tg = document.getElementById("poarrived");
+  if(tg) tg.addEventListener("click", ()=>{ PO_SHOW_ARRIVED = !PO_SHOW_ARRIVED; renderPOTable(); });
 }
 
 async function applyPO(){

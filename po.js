@@ -173,7 +173,7 @@ async function onPoTableClick(e){
     });
     done = `${lot} removed from ${b}`;
   }
-  if(out.ok){ renderPOTable(); if(CUR) render(CUR); }
+  if(out.ok){ renderPOTable(); try{ if(CUR) render(CUR); }catch(err){ console.warn('render after delete', err); } }
   if(st) st.textContent = out.ok ? done + " — saved to server." : "Not deleted — " + out.msg;
 }
 

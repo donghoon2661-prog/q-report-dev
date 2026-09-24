@@ -856,3 +856,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 #hist-photo-title{font-family:'Barlow Condensed';font-weight:700;font-size:18px;letter-spacing:.04em}
 #hist-photo-close{cursor:pointer;color:var(--fog);font-size:16px}
 #hist-photo-sub{color:var(--fog);font-family:'IBM Plex Mono';font-size:11px;margin-bottom:14px}
+.lotchip{white-space:nowrap}
+.lotchip button,#potable .podel{background:none;border:0;color:var(--fog);cursor:pointer;font-size:11px;padding:0 3px;line-height:1}
+.lotchip button:hover,#potable .podel:hover{color:var(--buoy)}
+#potable .podel{border:1px solid var(--line);border-radius:4px;padding:2px 6px}

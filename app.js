@@ -190,10 +190,41 @@ function isStaleVisible(s) {
   const age = Date.now() - new Date(at.replace(' ','T').replace(/Z$/,'')+'Z').getTime();
   return age >= 12 * 60 * 60 * 1000;
 }
+/* ---------- LA 이후(하역·반출·반납) ----------
+   worker가 이미 저장하는 events에서 직접 읽는다 (worker의 podEventAt과 같은 기준: POD에서 난 이벤트만).
+   HMM 이력은 부킹의 첫 번째 컨테이너 기준이다. 시각은 모두 LA 현지 시각. */
+function podEvAt(s, kw) {
+  const pod = String(s.pod || "").toUpperCase().trim();
+  if (!pod) return null;
+  const hit = (s.events || []).find(e =>
+    String(e.status || "").toUpperCase().includes(kw) &&
+    String(e.loc || "").toUpperCase().trim() === pod);
+  return hit ? hit.at : null;
+}
+function postArrival(s) {
+  const dis = podEvAt(s, "DISCHARG"), out = podEvAt(s, "GATE OUT"), rtn = podEvAt(s, "EMPTY CONTAINER RETURNED");
+  const stage = rtn ? "returned" : out ? "out" : (dis || s.etaActual) ? "discharged"
+              : s.podBerthingActual ? "berthed" : null;
+  return { dis, out, rtn, stage };
+}
+/* 이벤트 시각(현지, 시간대 없음) 사이의 경과 — 둘 다 같은 기준으로 파싱해 차이만 쓴다 */
+const evT = at => at ? new Date(at.replace(" ", "T").slice(0, 16)).getTime() : NaN;
+function laNowT() {
+  const t = new Date().toLocaleString("sv-SE", { timeZone: "America/Los_Angeles" });
+  return new Date(t.replace(" ", "T").slice(0, 16)).getTime();
+}
+function spanTxt(a, b) {
+  const h = (b - a) / 3.6e6;
+  if (!Number.isFinite(h) || h < 0) return "";
+  return h < 24 ? `${Math.max(1, Math.round(h))}h` : `${Math.floor(h / 24)}d`;
+}
+const PA_BADGE = { discharged: ["done", "DISCHARGED"], out: ["out", "GATED OUT"], returned: ["rtn", "RETURNED"] };
+
 function phaseBadge(s, L2) {
   if (!s.spDep && !s.etaActual) return `<span class="ph book">BOOKED</span>`;
+  const pa = postArrival(s);
+  if (PA_BADGE[pa.stage]) return `<span class="ph ${PA_BADGE[pa.stage][0]}">${PA_BADGE[pa.stage][1]}</span>`;
   if (!L2) return "";
-  if (s.etaActual) return `<span class="ph done">ARRIVED</span>`;
   if (L2.atPort) {
     const cur = L2.names[L2.i] || "";
     const ts  = (s.ts || "").toUpperCase();
@@ -206,7 +237,10 @@ function phaseBadge(s, L2) {
 const GAP_REMARK = `<p class="gapremark">The <b>!</b> mark appears when the LA ETB has moved
   against the original plan, and disappears automatically ${SIGNAL_DAYS} days after the change was
   detected. Click the number box at any time to see the full change log.</p>
-<p class="gapremark">All dates and times are local dates and times.</p>`;
+<p class="gapremark">All dates and times are local dates and times.</p>
+<p class="gapremark">OUT is the terminal gate out and RTN the empty container return in Los Angeles.
+  The box next to each shows the time since the previous step (discharge → gate out → return).
+  Both follow the first container of each booking.</p>`;
 
 function etaChangeLog(booking){
   const plan = POETA[booking] || null;
@@ -334,8 +368,52 @@ function rowsHTML(list){
         <div><span class="eta-lbl">ETB</span><span class="dt">${fmtDT(s.eta)}</span>${gapBox(s)}<span class="est">${etaActTag}</span></div>
         ${s.destEta?`<div style="margin-top:3px"><span class="eta-lbl">ETA</span><span class="dt">${fmtDT(s.destEta)}</span><span class="est">${destActTag}</span></div>`:""}
       </td>
+      <td class="pa-td" data-l="GATE OUT / RETURN">${postArrivalCell(s)}</td>
     </tr>`;
   }).join("");
+}
+
+/* LA GATE OUT / EMPTY RETURN 칸 — 옆 숫자: 하역→반출(터미널 체류), 반출→반납(컨테이너 사용) */
+function postArrivalCell(s) {
+  const pa = postArrival(s);
+  if (!pa.stage) return `<span class="pa-note">Not discharged</span>`;
+  if (pa.stage === "berthed") return `<span class="pa-note">Berthed · awaiting discharge</span>`;
+  const since = (at, what) => { const t = spanTxt(evT(at), laNowT()); return t ? `<span class="pa-note">${t} since ${what}</span>` : ""; };
+  const outLine = pa.out
+    ? `<span class="dt">${fmtDT(pa.out)}</span><span class="pa-span">+${spanTxt(evT(pa.dis), evT(pa.out)) || "?"}</span>`
+    : `<span class="pa-na">—</span>${pa.dis ? since(pa.dis, "discharge") : ""}`;
+  const rtnLine = pa.rtn
+    ? `<span class="dt">${fmtDT(pa.rtn)}</span><span class="pa-span">+${spanTxt(evT(pa.out), evT(pa.rtn)) || "?"}</span>`
+    : `<span class="pa-na">—</span>${pa.out ? since(pa.out, "gate out") : ""}`;
+  return `<div><span class="eta-lbl">OUT</span>${outLine}</div>
+        <div style="margin-top:3px"><span class="eta-lbl">RTN</span>${rtnLine}</div>`;
+}
+
+/* 상세 카드의 LA DELIVERY — 하역 → 반출 → 반납 */
+function deliveryHTML(s) {
+  const pa = postArrival(s);
+  if (!pa.stage || pa.stage === "berthed") return "";
+  const now = laNowT();
+  const step = (lbl, at, prevAt, doneTxt, waitTxt, extra) => {
+    const done = !!at;
+    const sub = done ? (prevAt ? `${spanTxt(evT(prevAt), evT(at))} ${doneTxt}` : (extra || ""))
+                     : (prevAt ? `${spanTxt(evT(prevAt), now)} ${waitTxt}` : "");
+    return `<div class="dl-step${done ? " on" : ""}">
+        <div class="dl-dot"></div>
+        <div class="dl-lb">${lbl}</div>
+        <div class="dl-at">${done ? fmtDT(at) : "—"}</div>
+        <div class="dl-sub">${sub}</div></div>`;
+  };
+  const term = (s.terminals || [])[3] || "";
+  const total = pa.rtn && pa.dis ? `<div class="dl-foot">Discharge → empty return ${spanTxt(evT(pa.dis), evT(pa.rtn))}` +
+    ` · removed from the list 3 days after return</div>` : "";
+  return `<div class="sch-wrap dl-wrap">
+    <div class="sch-label">LA DELIVERY <span class="dl-cntr">· CNTR ${s.container || "—"}${s.cntrQty > 1 ? ` (1 of ${s.cntrQty})` : ""}</span></div>
+    <div class="dl-steps">
+      ${step("DISCHARGED", pa.dis, null, "", "", term)}
+      ${step("GATE OUT", pa.out, pa.dis, "after discharge", "since discharge")}
+      ${step("EMPTY RETURN", pa.rtn, pa.out, "after gate out", "since gate out")}
+    </div>${total}</div>`;
 }
 
 function buildTable(data){
@@ -495,7 +573,8 @@ function cardHTML(s){
         <div class="pct">${Math.round(L2.pct*100)}%</div></div>`;
   }
   const cls = !L2 ? "t-dock" : (L2.atPort ? "t-dock" : "t-sail");
-  const phase = L2 ? L2.phase : "No position";
+  const paSt = PA_BADGE[postArrival(s).stage];
+  const phase = paSt ? `${(s.pod || "").replace(/,.*$/, "")} — ${paSt[1].toLowerCase()}` : L2 ? L2.phase : "No position";
   const po = poSummary(s.booking);
   return `<article class="card${isStaleVisible(s)?" is-stale":""}">
     <div class="card-hd"><span class="bkg">${s.booking}</span>
@@ -504,6 +583,7 @@ function cardHTML(s){
     <div class="card-bd">
       ${railHTML}
       ${schTableHTML(s)}
+      ${deliveryHTML(s)}
       <div class="grid">
         <div class="f"><label>PKG ETD</label><span>${fmtDT(s.polDep)}</span></div>
         <div class="f"><label>SIN ETA</label><span>${fmtDT(s.tsArr)}</span></div>
@@ -521,33 +601,117 @@ function cardHTML(s){
 }
 
 /* ---------- 개요 ---------- */
+/* 해상 구간은 0~OV_LA%, 그 뒤로 LA DELIVERY(하역·반출·반납) 구간.
+   같은 자리의 선박은 한 줄기로 묶고(이름을 위아래로 쌓음), 같은 선박·항차의 부킹은 ×N으로 합친다.
+   출항 전(BOOKED) 부킹은 선 위에 찍지 않고 오른쪽 위 상자에 이름만 나열한다. */
+const OV_LA = 78, OV_OUT = 89, OV_RTN = 100;
+const OV_STAGE = {                         /* 위치(%), 점 색 클래스, 표시 글자 */
+  berthed:    [OV_LA,  "s-berth", "BERTHED"],
+  discharged: [OV_LA,  "s-dis",   "DISCHARGED"],
+  out:        [OV_OUT, "s-out",   "GATED OUT"],
+  returned:   [OV_RTN, "s-rtn",   "RETURNED"]
+};
 function buildOverview(list){
-  const rows = list.map((s,i)=>({s,L:locate(s),i})).filter(r=>r.L);
-  const active = rows.filter(r=>r.L.pct>0 && r.L.pct<1);
-  const sorted=[...rows].sort((a,b)=>a.L.pct-b.L.pct);
-  const tiers=[0,1,2]; let k=0;
-  const marks=sorted.map(r=>{
-    const tier=tiers[k++%3];
-    const top=[8,42,76][tier], stem=[104,70,36][tier];
-    const x=Math.max(1.5,Math.min(98.5,r.L.pct*100));
-    return `<div class="ov" data-b="${r.s.booking}" style="left:${x}%;top:${top}px">
-        <div class="lb">${r.s.vessel}</div>
-        <div class="pc">${Math.round(r.L.pct*100)}%</div>
+  const booked = list.filter(s => !s.spDep && !s.etaActual);
+  const marks0 = [];
+  let noPos = 0;
+  for (const s of list) {
+    if (!s.spDep && !s.etaActual) continue;
+    const pa = postArrival(s), L = locate(s);
+    const st = OV_STAGE[pa.stage] || (L && L.pct >= 1 ? OV_STAGE.berthed : null);
+    if (st) { marks0.push({ s, x: st[0], cls: st[1], sub: st[2], key: pa.stage || "berthed" }); continue; }
+    if (!L) { noPos++; continue; }
+    const pct = Math.round(L.pct * 100);
+    marks0.push({ s, x: L.pct * OV_LA, cls: "", sub: pct + "%", key: "p" + pct });
+  }
+  /* 같은 선박·항차·위치 → ×N */
+  const merged = [];
+  for (const m of marks0) {
+    const hit = merged.find(o => o.s.vessel === m.s.vessel && o.s.voyage === m.s.voyage && o.key === m.key);
+    if (hit) hit.bkgs.push(m.s.booking); else merged.push({ ...m, bkgs: [m.s.booking] });
+  }
+  /* 가까운 자리 → 한 줄기. 해상 구간은 3% 이내, LA 이후는 같은 단계 지점끼리만
+     (해상 96%와 LA 접안이 한 줄기로 합쳐지지 않게) */
+  merged.sort((a, b) => a.x - b.x);
+  const clusters = [];
+  for (const m of merged) {
+    const c = clusters[clusters.length - 1], sea = !m.cls;
+    const same = c && (sea ? !c.items[0].cls && m.x - c.x < 3 : c.items[0].cls && c.x === m.x);
+    if (same) c.items.push(m); else clusters.push({ x: m.x, items: [m] });
+  }
+  /* 층(높이)은 그린 뒤 layoutOverview()가 실제 글자 폭을 재서 정한다 */
+  const LINE = 17, SHOW = 3;
+  const marks = clusters.map(c => {
+    const shown = c.items.slice(0, SHOW), more = c.items.length - shown.length;
+    const lines = shown.map(m => `<div class="ol" data-b="${m.bkgs[0]}">${m.s.vessel}${m.bkgs.length > 1 ? ` ×${m.bkgs.length}` : ""}` +
+      `<span class="pc ${m.cls}">${m.sub}</span></div>`).join("") +
+      (more ? `<div class="ol-more">+${more} more</div>` : "");
+    const n = shown.length + (more ? 1 : 0);
+    const top = 0, stem = Math.max(8, OV_DOT_Y - n * LINE);
+    const x = Math.max(0, Math.min(100, c.x));
+    const edge = x < 8 ? " edge-l" : x > 92 ? " edge-r" : "";
+    const cnt = c.items.reduce((a, m) => a + m.bkgs.length, 0);
+    return `<div class="ov${edge}" style="left:${x}%;top:${top}px">${lines}
         <div class="stem" style="height:${stem}px"></div>
-        <div class="dot"></div></div>`;
+        <div class="dot ${c.items[0].cls}"></div>${c.items.length > 1 ? `<span class="ov-n">×${cnt}</span>` : ""}</div>`;
   }).join("");
+
+  const count = k => marks0.filter(m => k(m)).length;
+  const transit = count(m => !m.cls), atLA = count(m => ["s-berth", "s-dis", "s-out"].includes(m.cls)), rtn = count(m => m.cls === "s-rtn");
+  const bkMerged = [];
+  for (const s of booked) {
+    const hit = bkMerged.find(o => o.vessel === s.vessel && o.voyage === s.voyage);
+    if (hit) hit.n++; else bkMerged.push({ vessel: s.vessel, voyage: s.voyage, booking: s.booking, n: 1 });
+  }
+  const bookedBox = booked.length ? `<div class="obooked"><b>BOOKED · ${booked.length}</b>` +
+    bkMerged.map(o => `<span class="ol" data-b="${o.booking}">${o.vessel}${o.n > 1 ? ` ×${o.n}` : ""}</span>`).join(" · ") + `</div>` : "";
+
   document.getElementById("overview").innerHTML=`
-    <h2>ALL SHIPMENTS · PORT KLANG → LOS ANGELES</h2>
-    <div class="sub">In transit ${active.length} of ${list.length} · by port-call segment${rows.length<list.length?` · ${list.length-rows.length} without position`:""}</div>
+    <h2>ALL SHIPMENTS · PORT KLANG → LOS ANGELES → EMPTY RETURN</h2>
+    <div class="sub">In transit ${transit} · At LA ${atLA} · Returned ${rtn}${booked.length ? ` · Booked ${booked.length}` : ""} · of ${list.length}${noPos ? ` · ${noPos} without position` : ""}</div>
+    ${bookedBox}
     <div class="orail">
-      <div class="base"></div>
-      <div class="cap" style="left:0"></div><div class="cap-lb" style="left:0">PORT KLANG</div>
-      <div class="cap" style="left:100%"></div><div class="cap-lb" style="left:100%">LOS ANGELES</div>
+      <div class="ozone" style="left:${OV_LA}%"><span>LA DELIVERY</span></div>
+      <div class="base" style="right:${100 - OV_LA}%"></div>
+      <div class="base dash" style="left:${OV_LA}%"></div>
+      <div class="cap" style="left:0"></div><div class="cap-lb l" style="left:0">PORT KLANG</div>
+      <div class="cap" style="left:${OV_LA}%"></div><div class="cap-lb" style="left:${OV_LA}%"><span class="full">LOS ANGELES</span><span class="short">LA</span></div>
+      <div class="cap" style="left:${OV_OUT}%"></div><div class="cap-lb" style="left:${OV_OUT}%"><span class="full">GATE OUT</span><span class="short">OUT</span></div>
+      <div class="cap" style="left:${OV_RTN}%"></div><div class="cap-lb r" style="left:${OV_RTN}%"><span class="full">EMPTY RETURN</span><span class="short">RTN</span></div>
       ${marks}</div>`;
-  document.querySelectorAll("#overview .ov").forEach(el=>{
+  document.querySelectorAll("#overview .ol[data-b]").forEach(el=>{
     el.addEventListener("click",()=>{ const i=list.findIndex(s=>s.booking===el.dataset.b); setView('map'); select(list[i],i,true); });
   });
+  layoutOverview();
 }
+
+/* 이름 층 배치 — 실제 글자 폭을 재서, 앞 줄기와 겹치지 않는 가장 위층에 둔다.
+   화면 폭이 바뀌면 다시 배치한다. */
+const OV_TOPS = [0, 40, 80], OV_DOT_Y = 115;   /* 점 윗변 = 선(120px) 중앙에 점이 오도록 */
+function layoutOverview() {
+  const els = [...document.querySelectorAll("#overview .ov")];
+  if (!els.length || !els[0].offsetParent) return;          /* 숨겨진 상태에서는 잴 수 없음 */
+  const placed = OV_TOPS.map(() => []);
+  for (const el of els) {
+    const lines = [...el.querySelectorAll(".ol,.ol-more")];
+    const labH = lines.reduce((a, l) => a + l.offsetHeight, 0);
+    el.style.top = "0px";
+    const r = el.getBoundingClientRect();
+    const hits = t => placed[t].filter(p => r.left < p.right + 6 && p.left < r.right + 6).length;
+    let best = 0, bestHits = Infinity;
+    for (let t = 0; t < OV_TOPS.length; t++) {
+      if (OV_TOPS[t] + labH > OV_DOT_Y - 8) break;          /* 점까지 줄기 자리가 없으면 그 층은 못 씀 */
+      const h = hits(t);
+      if (h < bestHits) { best = t; bestHits = h; }
+      if (!h) break;
+    }
+    placed[best].push({ left: r.left, right: r.right });
+    el.style.top = OV_TOPS[best] + "px";
+    el.querySelector(".stem").style.height = Math.max(8, OV_DOT_Y - OV_TOPS[best] - labH) + "px";
+  }
+}
+let _ovResizeT = null;
+window.addEventListener("resize", () => { clearTimeout(_ovResizeT); _ovResizeT = setTimeout(layoutOverview, 150); });
 
 /* ---------- 부킹 추가 ---------- */
 const ADD_MAX_TRIES = 3;
@@ -701,6 +865,7 @@ function setView(v){
   document.querySelectorAll('.ship-tabbar button').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
   document.getElementById('mapwrap').style.display  = v==='map'?'grid':'none';
   document.getElementById('cards').style.display    = v==='list'?'block':'none';
+  if(v==='list') requestAnimationFrame(layoutOverview);   /* 숨긴 채 그려졌으면 보일 때 다시 배치 */
   document.getElementById('history').style.display  = v==='history'?'block':'none';
   document.getElementById('system').style.display   = v==='system'?'block':'none';
   document.getElementById('beta').style.display     = v==='beta'?'block':'none';

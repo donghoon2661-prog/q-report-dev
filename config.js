@@ -103,9 +103,13 @@ const TS = s => { const t = s ? new Date(String(s).replace(" ","T")+"Z").getTime
                   return Number.isFinite(t) ? t : null; };
 const DAY = 86400000;
 
+/* LA 하역 이후 반출·반납을 추적 중인 부킹은 ETB+7일이 지나도 숨기지 않는다.
+   목록에서 빼는 시점은 worker가 정한다(반납+3일, 반납 미확인 시 하역+17일). */
 function prune(list){
   const now=Date.now();
-  return list.filter(s=>{ const t=TS(s.eta); return t===null ? true : now < t + 7*DAY; });
+  const podDischarged = s => { const pod = String(s.pod||"").toUpperCase().trim();
+    return !!pod && (s.events||[]).some(e => /DISCHARG/i.test(e.status||"") && String(e.loc||"").toUpperCase().trim() === pod); };
+  return list.filter(s=>{ const t=TS(s.eta); return t===null || podDischarged(s) ? true : now < t + 7*DAY; });
 }
 function sortByETD(list){
   const key = s => TS(s.polDep) ?? TS(s.eta) ?? Infinity;

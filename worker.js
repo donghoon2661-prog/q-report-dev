@@ -2101,6 +2101,51 @@ async function mergeRawHistory(env, results) {
   return { added, changed, days, fx };
 }
 
+/* ── 원자재 외부 시계열 병합 (/raw-material-import) ─────────────────
+   유안타증권 Chemical Weekly 엑셀(NB라텍스 월간, 부타디엔·AN·천연고무 주간 등)처럼
+   Worker가 직접 받기 어려운 자료를 이 PC의 예약 작업이 읽어 보낸다.
+   body: { source, items: { 이름: { unit:"USD/t", group, freq:"monthly"|"weekly", label,
+                                     points:{ "YYYY-MM-DD": 가격 } } } }
+   - USD 단위만 받는다 (환율 계산 없이 그대로 비교 가능)
+   - SunSirs 일간 품목 이름과 겹치면 거부 (일간 원본을 섞지 않음)
+   - 이미 있는 날짜는 덮어쓰지 않는다. 값이 다르면 conflicts로 알려만 준다.
+   - 검사를 모두 통과한 뒤에만 저장한다. */
+const IMPORT_NAME_RE = /^[a-z][a-z0-9_]{1,40}$/;
+async function importRawSeries(env, body) {
+  if (!body || typeof body.items !== 'object' || !body.items) return { error: 'items required' };
+  for (const [name, it] of Object.entries(body.items)) {
+    if (!IMPORT_NAME_RE.test(name)) return { error: 'bad item name: ' + name };
+    if (RAW_ITEMS[name]) return { error: name + ' is a daily SunSirs item — not importable' };
+    if (!it || !/^USD\//.test(it.unit || '')) return { error: name + ': unit must be USD/...' };
+    if (!it.points || typeof it.points !== 'object') return { error: name + ': points required' };
+  }
+  const h = await readRawHistory(env, true);
+  h.freqs = h.freqs || {}; h.sources = h.sources || {}; h.labels = h.labels || {}; h.groups = h.groups || {};
+  const report = {};
+  for (const [name, it] of Object.entries(body.items)) {
+    const item = h.items[name] || (h.items[name] = {});
+    let added = 0, same = 0; const conflicts = [];
+    for (const [d, p] of Object.entries(it.points)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || typeof p !== 'number' || !Number.isFinite(p) || p <= 0) continue;
+      if (item[d] === undefined) { item[d] = p; added++; }
+      else if (item[d] === p) same++;
+      else conflicts.push(d);
+    }
+    h.units[name] = it.unit;
+    if (it.group) h.groups[name] = String(it.group).slice(0, 20);
+    if (it.freq) h.freqs[name] = String(it.freq).slice(0, 20);
+    if (it.label) h.labels[name] = String(it.label).slice(0, 100);
+    if (body.source) h.sources[name] = String(body.source).slice(0, 200);
+    const ds = Object.keys(item).sort();
+    report[name] = { added, same, conflicts: conflicts.length, conflictDates: conflicts.slice(0, 10),
+                     days: ds.length, first: ds[0] || null, last: ds[ds.length - 1] || null };
+  }
+  try { rebuildUsd(h); } catch (_) {}
+  h.updated = new Date().toISOString();
+  await env.OQC.put(RAW_HISTORY_KEY, JSON.stringify(h));
+  return { ok: true, items: report };
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -2193,6 +2238,18 @@ export default {
     return new Response(JSON.stringify(h), { headers: JH });
   }
   // ── END raw-material-history ─────────────────────────────────────
+
+  // ── 원자재 외부 시계열 가져오기 (X-Refresh-Key) ─────────────────────
+  if (url.pathname === '/raw-material-import' && req.method === 'POST') {
+    if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+    let body;
+    try { body = await req.json(); } catch (_) { return json({ error: "invalid json" }, 400); }
+    try {
+      const r = await importRawSeries(env, body);
+      return json(r, r.error ? 400 : 200);
+    } catch (e) { return json({ error: String(e.message || e) }, 500); }
+  }
+  // ── END raw-material-import ──────────────────────────────────────
 
   // ── TEST: SunSirs 접근 테스트 (임시, DEV only) ──────────────────
   if (url.pathname === '/test-sunsirs') {
@@ -2723,6 +2780,8 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         cur.units = { ...(kv.raw_material_history.units || {}), ...cur.units };
         cur.groups = { ...(kv.raw_material_history.groups || {}), ...(cur.groups || {}) };
         cur.fx = { ...(kv.raw_material_history.fx || {}), ...(cur.fx || {}) };
+        for (const f of ["freqs", "sources", "labels"])
+          cur[f] = { ...(kv.raw_material_history[f] || {}), ...(cur[f] || {}) };
         try { rebuildUsd(cur); } catch (_) {}               /* USD 값은 원본+환율로 다시 계산 */
         await env.OQC.put(RAW_HISTORY_KEY, JSON.stringify(cur));
         restored.push(RAW_HISTORY_KEY + " (merge)");

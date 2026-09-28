@@ -96,6 +96,61 @@ html[data-theme="light"] .tile:hover{background:#F0F5F8;border-color:#0F2430}
 .ov .lb{font-family:'Barlow Condensed';font-size:13px;letter-spacing:.04em;white-space:nowrap;line-height:1.15}
 .ov .pc{font-family:'IBM Plex Mono';font-size:10px;color:var(--buoy)}
 .ov:hover .lb{color:var(--sail)}
+/* ── 진행표: LA DELIVERY 구간 · 묶음 표시 · BOOKED 상자 (v1.2.0) ── */
+#overview{position:relative}
+.orail .base.dash{right:0;height:0;background:none;border-top:2px dashed var(--line)}
+.ozone{position:absolute;top:-4px;height:146px;right:-8px;border-left:1px dashed var(--line);background:rgba(0,0,0,.14)}
+.ozone span{position:absolute;right:8px;top:158px;white-space:nowrap;font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:.14em;color:var(--sail)}
+.cap-lb .short{display:none}
+.ov{cursor:default}
+.ov .ol{font-family:'Barlow Condensed';font-size:13px;letter-spacing:.04em;white-space:nowrap;line-height:17px;cursor:pointer}
+.ov .ol:hover{color:var(--sail)}
+.ov .ol .pc{display:inline;margin-left:6px}
+.ov .ol-more{font-family:'IBM Plex Mono';font-size:10px;line-height:17px;color:var(--fog)}
+.ov .pc.s-berth{color:var(--dock)} .ov .pc.s-dis{color:var(--fog)}
+.ov .pc.s-out{color:var(--paper)}  .ov .pc.s-rtn{color:var(--sail)}
+.ov .dot.s-berth{background:var(--dock);box-shadow:0 0 0 3px rgba(242,193,78,.18)}
+.ov .dot.s-dis{background:var(--fog);box-shadow:0 0 0 3px rgba(138,164,181,.18)}
+.ov .dot.s-out{background:var(--paper);box-shadow:0 0 0 3px rgba(220,232,239,.14)}
+.ov .dot.s-rtn{background:var(--sail);box-shadow:0 0 0 3px rgba(63,208,166,.18)}
+.ov .ov-n{position:absolute;bottom:-2px;left:calc(50% + 10px);font-family:'IBM Plex Mono';font-size:9.5px;color:var(--fog)}
+/* 양 끝 줄기는 이름을 안쪽으로 붙여 박스 밖으로 넘치지 않게 (점은 제자리) */
+.ov.edge-l{transform:translateX(-6px);text-align:left}
+.ov.edge-l .dot{margin-left:0} .ov.edge-l .stem{margin-left:5px}
+.ov.edge-r{transform:translateX(calc(-100% + 6px));text-align:right}
+.ov.edge-r .dot{margin-right:0} .ov.edge-r .stem{margin-right:5px}
+.ov.edge-r .ov-n{left:auto;right:18px}
+.orail .cap-lb.l{transform:translateX(-6px)} .orail .cap-lb.r{transform:translateX(calc(-100% + 6px))}
+.obooked{display:inline-block;max-width:100%;margin:-12px 0 18px;padding:6px 11px;border:1px dashed var(--line);
+  font-family:'IBM Plex Mono';font-size:10.5px;line-height:1.55;color:var(--fog)}
+.obooked b{display:block;font-weight:500;letter-spacing:.12em;color:var(--paper)}
+.obooked .ol{cursor:pointer} .obooked .ol:hover{color:var(--sail)}
+/* 표: LA GATE OUT / EMPTY RETURN 칸 */
+.pa-note{font-family:'IBM Plex Mono';font-size:10px;color:var(--fog)}
+.pa-na{font-family:'IBM Plex Mono';font-size:12.5px;color:var(--fog)}
+.pa-na+.pa-note{margin-left:10px}
+.pa-span{display:inline-block;min-width:34px;padding:1px 5px;margin-left:8px;border:1px solid var(--line);
+  font-family:'IBM Plex Mono';font-size:11px;text-align:center}
+.ph.out{border-color:var(--paper);color:var(--paper)}
+.ph.rtn{border-color:var(--sail);background:var(--sail);color:var(--onsail)}
+/* 상세 카드: LA DELIVERY */
+.dl-cntr{letter-spacing:.04em;color:var(--fog)}
+.dl-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.dl-step{position:relative;padding:20px 10px 0 0}
+.dl-dot{position:absolute;top:0;left:0;width:10px;height:10px;border-radius:50%;border:2px solid var(--fog);background:var(--ink)}
+.dl-step.on .dl-dot{border-color:var(--sail);background:var(--sail)}
+.dl-step:not(:last-child)::before{content:"";position:absolute;top:6px;left:18px;right:6px;height:2px;background:var(--line)}
+.dl-step.on:has(+ .dl-step.on)::before{background:var(--sail)}
+.dl-lb{font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:.12em;color:var(--fog)}
+.dl-at{font-family:'IBM Plex Mono';font-size:13px;margin-top:4px}
+.dl-sub{font-size:11px;color:var(--fog);margin-top:3px}
+.dl-foot{margin-top:12px;padding-top:8px;border-top:1px solid var(--line-soft);font-family:'IBM Plex Mono';font-size:10.5px;color:var(--fog)}
+@media(max-width:760px){
+  .cap-lb .full{display:none} .cap-lb .short{display:inline}
+  .ov .ol{font-size:11px;line-height:15px}
+  .ozone span{top:160px}
+  .pa-td{flex-wrap:wrap}
+}
 #otable{width:100%;border-collapse:collapse;margin-bottom:22px;border:1px solid var(--line);background:var(--hull)}
 #otable th{font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.14em;color:var(--fog);
   text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);font-weight:400}

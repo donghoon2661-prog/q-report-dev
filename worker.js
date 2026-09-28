@@ -2658,11 +2658,13 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
      일정 수집:   0 *\/3 * * *      (3시간마다 정각, 하루 8회)
      지도 수집:  10 *\/3 * * *      (3시간마다 10분, 하루 8회)
      stale retry: 15,45 * * * *   (매 시 15분·45분, 하루 40회)
-     weekly 메일:  0 3 * * 1       (매주 일요일 LA 19:00 PST / 20:00 PDT) */
+     weekly 메일:  0 3 * * 2       (UTC 월요일 03:00 = LA 일요일 19:00 PST / 20:00 PDT = 한국 월요일 12:00)
+     ※ Cloudflare 크론의 요일 번호는 1=일요일, 2=월요일이다(일반 크론과 하루 차이).
+       요일 숫자에 기대지 않고 "03:00 정각 + 요일 지정" 형태면 weekly로 본다. */
   async scheduled(evt, env, ctx) {
     const cron = evt.cron || "";
     const cronMin = parseInt((cron.match(/^\s*(\d+)/) || [])[1] ?? "99", 10);
-    const isWeekly = cronMin === 0 && /0\s+3\s+\*\s+\*\s+1/.test(cron);
+    const isWeekly = /^\s*0\s+3\s+\*\s+\*\s+(?!\*\s*$)\S+\s*$/.test(cron);
     const isMaps = !isWeekly && cronMin === 10;
     const isStaleRetry = !isWeekly && (cronMin === 15 || cronMin === 45);
     const trigger = isWeekly ? "cron-weekly" : isMaps ? "cron-maps" : isStaleRetry ? "cron-stale" : "cron";

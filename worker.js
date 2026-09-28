@@ -1917,16 +1917,31 @@ const stampNow = () => new Date().toISOString();
 
 
 /* ── 원자재 가격 수집 (SunSirs) ─────────────────────────────────────
-   NBR(893), Corrugated paper(1250), White cardboard(1319)
+   품목별 SunSirs 상품 번호. 번호는 SunSirs(영문)와 100ppi(중문)가 같다.
+   - 니트릴 장갑 원료인 NBR 라텍스는 부타디엔·아크릴로니트릴 가격을 따라가므로 둘을 함께 모은다.
+     (SunSirs의 nbr은 고체 합성고무 — 라텍스 가격의 참고용)
+   - SunSirs 페이지의 단위 표기는 모두 "RMB/ton"으로 나오지만 원유는 실제로 USD/bbl이다.
+     단위는 페이지 표기가 아니라 아래 unit을 기준으로 한다.
+   - group: main(주원료) / upstream(원유·나프타) / chemical(배합 약품) / packaging(포장재)
    zwd_table_li 구조에서 최근 7일치 파싱 → KV raw_material_latest 저장 */
+const RAW_ITEMS = {
+  nbr:              { id: 893,  unit: 'CNY/t',   group: 'main' },
+  butadiene:        { id: 886,  unit: 'CNY/t',   group: 'main' },
+  acrylonitrile:    { id: 1324, unit: 'CNY/t',   group: 'main' },      /* SunSirs 표기 "Vinyl cyanide" */
+  naphtha:          { id: 882,  unit: 'CNY/t',   group: 'upstream' },
+  crude_wti:        { id: 1036, unit: 'USD/bbl', group: 'upstream' },
+  crude_brent:      { id: 1127, unit: 'USD/bbl', group: 'upstream' },
+  koh:              { id: 1475, unit: 'CNY/t',   group: 'chemical' },
+  titanium_dioxide: { id: 645,  unit: 'CNY/t',   group: 'chemical' },
+  corrugated_paper: { id: 1250, unit: 'CNY/t',   group: 'packaging' },
+  white_cardboard:  { id: 1319, unit: 'CNY/t',   group: 'packaging' }
+};
+const sunsirsUrl = id => `https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-${id}.html`;
+
 async function collectRawMaterials(env) {
-  const TARGETS = {
-    nbr:              'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-893.html',
-    corrugated_paper: 'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-1250.html',
-    white_cardboard:  'https://www.sunsirs.com/m/page/commodity-price-detail/commodity-price-detail-1319.html'
-  };
   const results = {};
-  for (const [name, targetUrl] of Object.entries(TARGETS)) {
+  for (const [name, { id }] of Object.entries(RAW_ITEMS)) {
+    const targetUrl = sunsirsUrl(id);
     try {
       const r = await fetch(targetUrl, {
         headers: {
@@ -1958,12 +1973,77 @@ async function collectRawMaterials(env) {
 }
 
 /* ── 원자재 가격 누적 (KV raw_material_history, TTL 없음) ──────────
-   구조: { updated, source, units:{품목:단위}, items:{품목:{"YYYY-MM-DD":가격}} }
+   구조: { updated, source,
+           units:{품목:원래 단위}, items:{품목:{"YYYY-MM-DD":원래 가격}},     ← 수집 원본 (삭제 없음)
+           groups:{품목:묶음},
+           fx:{"YYYY-MM-DD": 1 CNY당 USD},                                   ← ECB 기준환율(영업일)
+           usdUnits:{품목:"USD/t"|"USD/bbl"}, usd:{품목:{"YYYY-MM-DD":USD 가격}} } ← 원본+환율로 매번 다시 계산
    - 매일 받은 최근 7일치를 기존 기록에 병합 (덮어쓰기 아님, 삭제 없음)
    - 수집이 며칠 빠져도 다음 수집의 7일치로 빈 날이 자동 보충
-   - SunSirs 날짜는 MM/DD만 오므로 중국 기준 오늘 날짜로 연도를 추정 */
+   - SunSirs 날짜는 MM/DD만 오므로 중국 기준 오늘 날짜로 연도를 추정
+   - 단위 통일: 원래 통화 값은 그대로 두고, 그날(주말·휴일은 직전 영업일) 환율로 USD 값을 함께 둔다.
+     KOSSAN 판매가가 USD라 비교 기준을 USD로 맞춘다. 원유는 원래 USD/bbl이라 그대로. */
 const RAW_HISTORY_KEY = 'raw_material_history';
-const RAW_UNITS = { nbr: 'Yuan/mt', corrugated_paper: 'Yuan/mt', white_cardboard: 'Yuan/mt' };
+const RAW_UNITS = Object.fromEntries(Object.entries(RAW_ITEMS).map(([k, v]) => [k, v.unit]));
+const RAW_GROUPS = Object.fromEntries(Object.entries(RAW_ITEMS).map(([k, v]) => [k, v.group]));
+/* 예전 표기 'Yuan/mt' → 'CNY/t' (같은 뜻) */
+const normUnit = u => (u === 'Yuan/mt' ? 'CNY/t' : u);
+
+/* 환율 보충 — 가장 이른 CNY 가격 날짜(7일 여유)부터 오늘까지 비어 있는 구간만 받아 h.fx에 병합.
+   1순위 frankfurter(ECB, 기간 조회), 실패 시 open.er-api(오늘 값 하나). */
+async function ensureFx(h) {
+  if (!h.fx) h.fx = {};
+  const cnyDates = Object.entries(h.items)
+    .filter(([k]) => normUnit(h.units[k] || RAW_UNITS[k] || '').startsWith('CNY'))
+    .flatMap(([, v]) => Object.keys(v)).sort();
+  if (!cnyDates.length) return { skipped: 'no CNY prices' };
+  const today = new Date().toISOString().slice(0, 10);
+  const back7 = d => new Date(Date.parse(d + 'T00:00:00Z') - 7 * 86400000).toISOString().slice(0, 10);
+  const have = Object.keys(h.fx).sort();
+  const from = have.length && have[0] <= back7(cnyDates[0]) ? have[have.length - 1] : back7(cnyDates[0]);
+  try {
+    const r = await fetch(`https://api.frankfurter.dev/v1/${from}..${today}?from=CNY&to=USD`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    let n = 0;
+    for (const [d, v] of Object.entries(j.rates || {})) if (v && Number.isFinite(v.USD)) { h.fx[d] = v.USD; n++; }
+    return { source: 'frankfurter(ECB)', from, added: n };
+  } catch (e) {
+    try {
+      const r = await fetch('https://open.er-api.com/v6/latest/CNY');
+      const j = await r.json();
+      const usd = j && j.rates && j.rates.USD;
+      if (!Number.isFinite(usd)) throw new Error('no USD rate');
+      const d = new Date((j.time_last_update_unix || Date.now() / 1000) * 1000).toISOString().slice(0, 10);
+      if (h.fx[d] === undefined) h.fx[d] = usd;
+      return { source: 'open.er-api (fallback)', date: d, primaryError: e.message };
+    } catch (e2) { return { error: e.message + ' / ' + e2.message }; }
+  }
+}
+
+/* USD 값 다시 계산 — 원본(items)과 환율(fx)에서 매번 새로 만든다 (저장된 usd에 의존하지 않음) */
+function rebuildUsd(h) {
+  const fxDates = Object.keys(h.fx || {}).sort();
+  const rateOn = d => {                                      /* d 당일 또는 직전 영업일 환율 (7일 이내) */
+    let lo = 0, hi = fxDates.length - 1, hit = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (fxDates[m] <= d) { hit = m; lo = m + 1; } else hi = m - 1; }
+    if (hit < 0) return null;
+    const gap = (Date.parse(d) - Date.parse(fxDates[hit])) / 86400000;
+    return gap <= 7 ? h.fx[fxDates[hit]] : null;
+  };
+  h.usd = {}; h.usdUnits = {};
+  for (const [name, days] of Object.entries(h.items)) {
+    const unit = normUnit(h.units[name] || RAW_UNITS[name] || '');
+    const out = {};
+    if (unit.startsWith('USD')) {
+      Object.assign(out, days); h.usdUnits[name] = unit;
+    } else if (unit.startsWith('CNY')) {
+      for (const [d, p] of Object.entries(days)) { const r = rateOn(d); if (r) out[d] = Math.round(p * r * 100) / 100; }
+      h.usdUnits[name] = unit.replace('CNY', 'USD');
+    } else continue;
+    h.usd[name] = out;
+  }
+}
 
 function rawDateToIso(mmdd, now = new Date()) {
   const m = /^(\d{2})\/(\d{2})$/.exec(mmdd || "");
@@ -1998,6 +2078,7 @@ async function readRawHistory(env, strict = false) {
 async function mergeRawHistory(env, results) {
   const h = await readRawHistory(env, true);
   let added = 0, changed = 0;
+  for (const k of Object.keys(h.units)) h.units[k] = normUnit(h.units[k]);
   for (const [name, res] of Object.entries(results || {})) {
     if (!res || !Array.isArray(res.rows)) continue;          // 수집 실패 품목은 건너뜀
     const item = h.items[name] || (h.items[name] = {});
@@ -2010,10 +2091,14 @@ async function mergeRawHistory(env, results) {
       item[d] = r.price;
     }
   }
+  h.groups = { ...(h.groups || {}), ...RAW_GROUPS };
+  /* 환율 보충과 USD 계산은 실패해도 원본 저장을 막지 않는다 */
+  let fx;
+  try { fx = await ensureFx(h); rebuildUsd(h); } catch (e) { fx = { error: e.message }; }
   h.updated = new Date().toISOString();
   await env.OQC.put(RAW_HISTORY_KEY, JSON.stringify(h));
   const days = Object.fromEntries(Object.entries(h.items).map(([k, v]) => [k, Object.keys(v).length]));
-  return { added, changed, days };
+  return { added, changed, days, fx };
 }
 
 export default {
@@ -2100,9 +2185,10 @@ export default {
     const from = url.searchParams.get('from') || '';
     const to   = url.searchParams.get('to')   || '9999';
     if (from || url.searchParams.get('to')) {
-      for (const k of Object.keys(h.items)) {
-        h.items[k] = Object.fromEntries(Object.entries(h.items[k]).filter(([d]) => d >= from && d <= to));
-      }
+      const cut = obj => Object.fromEntries(Object.entries(obj).filter(([d]) => d >= from && d <= to));
+      for (const k of Object.keys(h.items)) h.items[k] = cut(h.items[k]);
+      for (const k of Object.keys(h.usd || {})) h.usd[k] = cut(h.usd[k]);
+      if (h.fx) h.fx = cut(h.fx);
     }
     return new Response(JSON.stringify(h), { headers: JH });
   }
@@ -2635,6 +2721,9 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
           cur.items[name] = { ...days, ...(cur.items[name] || {}) };
         }
         cur.units = { ...(kv.raw_material_history.units || {}), ...cur.units };
+        cur.groups = { ...(kv.raw_material_history.groups || {}), ...(cur.groups || {}) };
+        cur.fx = { ...(kv.raw_material_history.fx || {}), ...(cur.fx || {}) };
+        try { rebuildUsd(cur); } catch (_) {}               /* USD 값은 원본+환율로 다시 계산 */
         await env.OQC.put(RAW_HISTORY_KEY, JSON.stringify(cur));
         restored.push(RAW_HISTORY_KEY + " (merge)");
       } catch (e) { skipped.push(RAW_HISTORY_KEY + ": " + e.message); }

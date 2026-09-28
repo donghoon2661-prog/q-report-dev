@@ -18,6 +18,12 @@
  * GET  /raw?bkg=          원본 응답 진단 (&full=1 → 평문 전체)
  * GET  /debug             접속 진단 (예산·lastrun 포함)
  *
+ * rev.20 (DEV 실험) — 520은 세션이 아니라 요청마다 독립적으로 걸린다(약 19%).
+ *   sessionLog 6,176건 분석: 같은 세션에서 직전 조회 성공 후 17.9%, 실패 후 19.0%로 차이가 없다.
+ *   rev.7의 "세션이 좌우한다"는 가정과 달리, 새 세션을 여는 것은 세션 페이지 요청만 더 쓸 뿐이다.
+ *   · 일정 수집: 세션 페이지를 열릴 때까지 재시도하고, 부킹마다 같은 세션에서 요청 단위로 재시도
+ *   · 실행 요약(부킹 수·성공 수·요청 수)을 KV retryExp에 누적해 MAIN과 비교한다
+ *   · 지도 수집(collectMaps)과 /lookup은 이번 실험에서 바꾸지 않는다
  * rev.19 — Workers Paid 플랜 전환에 맞춰 요청 예산 상향(40→200), MAX_PER_RUN 8→30.
  *   collectSchedule은 애초에 커서 분할(pickSlice)을 쓰지 않고 매번 전체 목록을 처리하고
  *   있었는데(죽은 코드였음), 무료 플랜 한도(50개)를 넘길까 봐 만든 값이라 유료 전환 후에는
@@ -112,6 +118,13 @@ const MAP_TTL_H = 24;
 const MAX_SESSIONS = 8;
 /* 건별 재시도 — 같은 세션에서 재시도는 효과 없음, 새 세션으로 넘기는 게 낫다 */
 const TRIES_PER_ITEM = 1;
+
+/* rev.20 일정 수집 재시도 — 520은 요청마다 독립이므로 세션을 버리지 않고 요청 단위로 재시도 */
+const SESSION_PAGE_TRIES = 15;          // 세션 페이지 재시도 상한
+const QUERY_TRIES = 12;                 // 부킹당 같은 세션에서 재시도 상한
+const SCHED_SESSIONS = 3;               // 세션이 중간에 죽는 경우 대비 세션 상한
+const TRY_GAP_MS = 2500;                // 재시도 간격 (+0~1.5초 랜덤)
+const SCHED_TIME_LIMIT_MS = 8 * 60000;  // 한 실행 상한 (cron 벽시계 한도 15분보다 여유 있게)
 
 /* ---------- 요청 예산 ----------
    Workers Paid 플랜은 한 실행당 외부 요청 상한이 무료 플랜(50개)보다 훨씬 넉넉하다.
@@ -1484,8 +1497,8 @@ async function assembleShipments(env) {
 }
 
 /* ---------- 1단계: 일정 수집 (지도 제외) ----------
-   520은 재시도가 아니라 세션이 좌우한다. 실패분을 모아 새 세션으로 넘기는 것을
-   최대 MAX_SESSIONS회 반복한다. */
+   rev.20: 520은 요청마다 독립이다. 세션 페이지는 열릴 때까지, 부킹은 같은 세션에서
+   QUERY_TRIES회까지 재시도한다. 세션이 중간에 죽을 경우만 새 세션(최대 SCHED_SESSIONS)으로 넘긴다. */
 async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
   const budget = sharedBudget || newBudget();
   const list = await getList(env);
@@ -1513,38 +1526,57 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
   const errMap = new Map();
   const sessionLogs = [];
 
-  for (let round = 0; round < MAX_SESSIONS && pending.length; round++) {
-    /* 남은 예산이 이번 라운드를 감당 못 하면 중단 */
-    if (budget.left < pending.length * TRIES_PER_ITEM + 3) break;
+  const t0 = Date.now();
+  const timeLeft = () => Date.now() - t0 < SCHED_TIME_LIMIT_MS;
+  let pageTries = 0, queryReqs = 0;
+
+  for (let round = 0; round < SCHED_SESSIONS && pending.length && timeLeft(); round++) {
+    if (budget.left < 3) break;
     if (round) await sleep(5000);
 
-    let session;
-    try {
-      session = await openSession(budget);
-      sessionsUsed++;
-    } catch (e) {
-      errors.push(`Session ${round + 1} failed: ` + String(e.message || e));
-      continue;                       // 다음 라운드에서 다시 시도
+    /* 세션 페이지: 열릴 때까지 재시도 */
+    let session = null, sessErr = null, sessTries = 0;
+    for (let i = 0; i < SESSION_PAGE_TRIES && budget.left >= 3 && timeLeft(); i++) {
+      if (i) await sleep(TRY_GAP_MS + Math.random() * 1500);
+      sessTries++; pageTries++;
+      try { session = await openSession(budget); break; }
+      catch (e) { sessErr = e; }
     }
+    if (!session) {
+      errors.push(`Session ${round + 1} failed after ${sessTries} page tries: ` + String(sessErr && sessErr.message || sessErr));
+      continue;
+    }
+    sessionsUsed++;
 
     const stillFailing = [];
     for (const bkg of pending) {
-      if (budget.left < 3) { stillFailing.push(bkg); continue; }
-      try {
-        const _html = await queryBooking(budget, session, bkg, TRIES_PER_ITEM);
-        const _item = parseBooking(_html, bkg);
-        const _loc = budget.lastCfRay ? (budget.lastCfRay.match(/-([A-Z]{3})\b/) || [])[1] || null : null;
-        if (_loc) _item.successEdge = _loc;
-        out.set(bkg, _item);
-        sessionLogs.push({ ok: true, booking: bkg, attempt: round + 1, loc: _loc });
-      } catch (e) {
+      let done = false, lastMsg = null;
+      for (let i = 0; i < QUERY_TRIES && budget.left >= 3 && timeLeft(); i++) {
+        if (i) await sleep(TRY_GAP_MS + Math.random() * 1500);
+        queryReqs++;
+        try {
+          const _html = await queryBooking(budget, session, bkg, 1);
+          const _item = parseBooking(_html, bkg);
+          const _loc = budget.lastCfRay ? (budget.lastCfRay.match(/-([A-Z]{3})\b/) || [])[1] || null : null;
+          if (_loc) _item.successEdge = _loc;
+          out.set(bkg, _item);
+          sessionLogs.push({ ok: true, booking: bkg, attempt: i + 1, round: round + 1, loc: _loc });
+          done = true;
+          break;
+        } catch (e) {
+          lastMsg = String(e.message || e);
+          const _code = (lastMsg.match(/response\s+(\d{3})/) || [])[1] || null;
+          const _loc = (lastMsg.match(/-([A-Z]{3})\b/) || [])[1] || null;
+          sessionLogs.push({ ok: false, booking: bkg, attempt: i + 1, round: round + 1, code: _code, loc: _loc });
+          /* 520·429 같은 일시 오류만 재시도. 조회 결과 없음·파싱 오류는 반복해도 같다 */
+          if (!/response\s+(5\d\d|429)/.test(lastMsg)) break;
+        }
+      }
+      if (!done) {
         stillFailing.push(bkg);
-        errMap.set(bkg, String(e.message || e));
-        const _code = (String(e.message||e).match(/response\s+(\d{3})/) || [])[1] || null;
-        const _loc = (String(e.message||e).match(/-([A-Z]{3})\b/) || [])[1] || null;
-        sessionLogs.push({ ok: false, booking: bkg, attempt: round + 1, code: _code, loc: _loc });
-        if (round === MAX_SESSIONS - 1 || budget.left < 6)
-          errors.push(String(e.message || e));
+        errMap.set(bkg, lastMsg || "not tried (budget/time)");
+        if (lastMsg && (round === SCHED_SESSIONS - 1 || budget.left < 6 || !timeLeft()))
+          errors.push(lastMsg);
       }
       await sleep(2000);
     }
@@ -1556,6 +1588,13 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
   if (sessionLogs.length) {
     appendSessionLog(env, sessionLogs.map(l => ({ ...l, tag: forceBkgs ? "retry" : "cron" }))).catch(() => {});
   }
+  /* rev.20 실험 요약 — 부킹별 최종 성공률을 MAIN과 비교하기 위한 실행 단위 기록 */
+  appendRetryExp(env, {
+    tag: forceBkgs ? "retry" : "cron",
+    n: activeSlice.length, ok: out.size,
+    pageTries, queryReqs, sessions: sessionsUsed,
+    sec: Math.round((Date.now() - t0) / 1000)
+  }).catch(() => {});
 
   /* 이전 수집분 승계 — 지도 좌표, 이번에 안 돈 부킹, 실패 건, 완료 건 */
   /* prevMap은 위에서 이미 로드함 */
@@ -2755,6 +2794,7 @@ async function appendSessionLog(env, entries) {
     tag: e.tag || 'cron',
     booking: e.booking,
     attempt: e.attempt || 1,
+    round: e.round || null,
     code: e.code || null,
     loc: e.loc || null
   }));
@@ -2762,4 +2802,12 @@ async function appendSessionLog(env, entries) {
   try { existing = JSON.parse(await env.OQC.get("sessionLog") || "[]"); } catch (_) {}
   const combined = [...existing, ...newRows].slice(-200);
   await env.OQC.put("sessionLog", JSON.stringify(combined), { expirationTtl: 14 * 24 * 3600 }).catch(() => {});
+}
+
+/* rev.20 실험: 일정 수집 실행 요약 { t, tag, n, ok, pageTries, queryReqs, sessions, sec } */
+async function appendRetryExp(env, row) {
+  let existing = [];
+  try { existing = JSON.parse(await env.OQC.get("retryExp") || "[]"); } catch (_) {}
+  const combined = [...existing, { t: Date.now(), ...row }].slice(-500);
+  await env.OQC.put("retryExp", JSON.stringify(combined), { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
 }

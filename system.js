@@ -400,6 +400,13 @@ async function sysMapRefreshOne(bkg, btn){
 
 /* ---------- Changelog ---------- */
 const CHANGELOG = [
+  { v:"1.2", date:"2026-09-28", notes:[
+    "LA 하역 이후 반출(Gate Out)·공컨 반납(Empty Return)까지 추적 — 표에 LA GATE OUT / EMPTY RETURN 열 추가, 단계 배지 DISCHARGED → GATED OUT → RETURNED",
+    "상세 카드에 LA DELIVERY 타임라인(하역 → 반출 → 반납) 추가 — 부킹의 첫 번째 컨테이너 기준",
+    "진행표: LA 뒤에 LA DELIVERY 구간 추가, 출항 전 부킹은 BOOKED 상자로 분리, 같은 선박은 ×N으로 묶음",
+    "진행표 선박 이름이 겹쳐 보이던 문제 수정",
+    "도착지 접안 부킹의 진행률이 75%로 멈추던 문제, 접안 후 ETB가 scheduled로 뜨던 문제 수정"
+  ]},
   { v:"1.1", date:"2026-08-08", notes:[
     "admin 계정 추가 — 업데이트 로그(변경 이력)는 이제 admin 계정에서만 볼 수 있음 (kossan 포함 다른 계정에서는 안 보임)",
     "eta / qc 계정으로 로그인하면 메뉴(01/02 선택 화면) 없이 바로 해당 화면으로 진입",

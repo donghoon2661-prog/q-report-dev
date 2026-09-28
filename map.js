@@ -140,9 +140,12 @@ function locate(s){
   const nm = portNames(s);
 
   /* etaActual(POD 실제 도착)이면 dense/non-dense 구분 없이 항상 100% 도착으로 처리
-     (hasDensePos 분기보다 먼저 체크 — dense route라도 도착한 배는 무조건 100%) */
-  if (s.etaActual) {
-    const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
+     (hasDensePos 분기보다 먼저 체크 — dense route라도 도착한 배는 무조건 100%)
+     POD 접안(podBerthingActual)이거나 HMM 위치(idx)가 마지막 기항지를 가리킬 때도 도착지에 있는 것이다.
+     그대로 두면 아래에서 idx가 마지막 구간 시작점으로 잘려 75% 같은 값이 나온다(KULM74959200). */
+  const posRoute = (Array.isArray(s.rawRoute) && s.rawRoute.length >= 2) ? s.rawRoute : s.route;
+  const atLastPort = Number.isFinite(s.idx) && s.idx >= posRoute.length - 1;
+  if (s.etaActual || s.podBerthingActual || atLastPort) {
     const r = posRoute.map(wrap);
     const last = r[r.length - 1];
     return { pos: last, i: r.length - 2, f: 1, names: nm,

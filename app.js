@@ -320,7 +320,8 @@ function gapBox(s){
 function rowsHTML(list){
   const actTag = (actual) => (actual ? "actual" : "scheduled");
   return list.map((s,i)=>{
-    const etaActTag  = actTag(!!s.etaActual);
+    /* ETB는 POD 접안이 확인되면 actual (ETA/도착 완료는 하역 기준 etaActual 그대로) */
+    const etaActTag  = actTag(!!s.etaActual || !!s.podBerthingActual);
     const destActTag = s.destEta ? actTag(!!s.etaActual) : "";
     const L2 = locate(s);
     return `

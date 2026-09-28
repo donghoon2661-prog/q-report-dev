@@ -404,6 +404,12 @@ function hasPodDischarged(s) {
    hasPodDischarged()는 기존 의미(etaActual/delay/지도)를 그대로 유지한다. */
 const POST_ARRIVAL_MAX_D = 14;   /* 반납 이벤트가 끝내 안 올라올 때의 안전장치 */
 const DELETE_GRACE_D     = 3;    /* 완료 확정 후 bookings 유지 기간 (기존 3일 유예 그대로) */
+/* DEV 전용 — 화면 작업(v1.2.0 반출·반납 표시) 예시로 쓰려고 자동 삭제에서 제외하는 부킹과 만료일.
+   완료된 부킹은 HMM을 다시 조회하지 않고 이전 값만 승계하므로 요청 부담은 없다.
+   만료일이 지나면 원래 규칙대로 다음 수집 때 목록에서 빠진다. MAIN에는 반영하지 않는다. */
+const KEEP_UNTIL = {
+  "KULM72444200": "2026-10-31T15:00:00Z"   /* 2026-11-01 00:00 KST — 하역·반출·반납이 모두 잡힌 첫 예시 */
+};
 
 /* POD에서 발생한 특정 이벤트의 시각 문자열 반환 (없으면 null) */
 function podEventAt(s, kw) {
@@ -1722,6 +1728,7 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
      delayHistory에는 이미 영구 저장돼 있으므로 데이터 손실 없음. */
   const expired = new Set();
   for (const [bkg, item] of out) {
+    if (KEEP_UNTIL[bkg] && Date.now() < Date.parse(KEEP_UNTIL[bkg])) continue;
     const due = deleteDueMs(item);
     if (Number.isFinite(due) && Date.now() >= due) expired.add(bkg);
   }

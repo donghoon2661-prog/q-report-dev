@@ -2146,10 +2146,158 @@ async function importRawSeries(env, body) {
   return { ok: true, items: report };
 }
 
+/* ── AIS 선박 위치 수집 (AISStream) ──────────────────────────────────
+   WebSocket을 1~2분 열어 MMSI 필터로 받은 마지막 위치·정적 정보를 KV ais:latest 하나에 저장한다.
+   값이 바뀐 때만 ais:latest를 쓰고, 실행 요약은 ais:stats에 따로 남긴다(측정용). HMM 수집과 완전히 분리.
+   필드명 주의: PositionReport는 MetaData.Latitude, ShipStaticData는 MetaData.latitude. */
+const AIS_VESSELS = [
+  { mmsi: "636093094", imo: 9293820, name: "CONTI CRYSTAL" }   // 포트클랑 → 시드니 (항차 V.641S)
+];
+const AIS_URL = "https://stream.aisstream.io/v0/stream";
+const AIS_PKL = { lat: 3.0, lon: 101.35 };   // 포트클랑 대략 좌표(거리 계산용)
+const AIS_STATS_MAX = 400;                   // 15분 간격 약 4일치
+
+function aisDistNm(lat, lon, to) {
+  const R = 3440.065, r = Math.PI / 180;
+  const dLat = (to.lat - lat) * r, dLon = (to.lon - lon) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat * r) * Math.cos(to.lat * r) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(a)));
+}
+
+async function aisText(data) {
+  if (typeof data === "string") return data;
+  if (data && typeof data.text === "function") return await data.text();
+  return new TextDecoder().decode(data);
+}
+
+async function pollAIS(env, secs = 90) {
+  const t0 = Date.now();
+  const stats = { at: stampNow(), secs, msgs: 0, pos: 0, stat: 0, ms: 0, error: null };
+  const got = {};
+  let ws = null;
+
+  if (!env.AISSTREAM_KEY) {
+    stats.error = "AISSTREAM_KEY missing";
+  } else {
+    try {
+      const resp = await fetch(AIS_URL, { headers: { Upgrade: "websocket" } });
+      ws = resp.webSocket;
+      if (!ws) throw new Error("websocket upgrade failed (status " + resp.status + ")");
+      ws.accept();
+      await new Promise(resolve => {
+        const timer = setTimeout(resolve, secs * 1000);
+        const end = () => { clearTimeout(timer); resolve(); };
+        ws.addEventListener("close", ev => { stats.closed = ev.code; end(); });
+        ws.addEventListener("error", () => { stats.error = "websocket error"; end(); });
+        ws.addEventListener("message", async ev => {
+          try {
+            const m = JSON.parse(await aisText(ev.data));
+            if (m.error) { stats.error = String(m.error).slice(0, 120); return end(); }
+            stats.msgs++;
+            const md = m.MetaData || {};
+            const mmsi = String(md.MMSI ?? "");
+            if (!AIS_VESSELS.some(v => v.mmsi === mmsi)) return;
+            const body = (m.Message || {})[m.MessageType] || {};
+            const slot = got[mmsi] || (got[mmsi] = {});
+            if (m.MessageType === "PositionReport") {
+              stats.pos++;
+              slot.pos = {
+                lat: body.Latitude ?? md.Latitude ?? md.latitude,
+                lon: body.Longitude ?? md.Longitude ?? md.longitude,
+                sog: body.Sog, cog: body.Cog, heading: body.TrueHeading, nav: body.NavigationalStatus,
+                at: md.time_utc || stampNow()
+              };
+            } else if (m.MessageType === "ShipStaticData") {
+              stats.stat++;
+              const e = body.Eta || null;
+              slot.stat = {
+                name: String(body.Name || md.ShipName || "").trim(),
+                imo: body.ImoNumber,
+                destination: String(body.Destination || "").trim(),
+                eta: e ? { month: e.Month, day: e.Day, hour: e.Hour, minute: e.Minute } : null,
+                draught: body.MaximumStaticDraught,
+                at: md.time_utc || stampNow()
+              };
+            }
+          } catch (_) { /* 깨진 메시지는 무시 */ }
+        });
+        ws.send(JSON.stringify({
+          APIKey: env.AISSTREAM_KEY,
+          BoundingBoxes: [[[-90, -180], [90, 180]]],
+          FiltersShipMMSI: AIS_VESSELS.map(v => v.mmsi),
+          FilterMessageTypes: ["PositionReport", "ShipStaticData"]
+        }));
+      });
+    } catch (e) {
+      stats.error = String(e.message || e).slice(0, 160);
+    } finally {
+      try { ws && ws.close(1000, "done"); } catch (_) {}
+    }
+  }
+
+  /* 값이 바뀐 때만 ais:latest 저장 */
+  try {
+    if (Object.keys(got).length) {
+      const prev = await readJsonKV(env, "ais:latest", null) || { vessels: {} };
+      let changed = false;
+      for (const [mmsi, g] of Object.entries(got)) {
+        const meta = AIS_VESSELS.find(v => v.mmsi === mmsi);
+        const cur = prev.vessels[mmsi] || { mmsi, imo: meta.imo, name: meta.name };
+        if (g.pos && (!cur.pos || cur.pos.at !== g.pos.at)) {
+          cur.pos = g.pos;
+          cur.lastSeen = g.pos.at;
+          if (typeof g.pos.lat === "number" && typeof g.pos.lon === "number") {
+            cur.distPklNm = aisDistNm(g.pos.lat, g.pos.lon, AIS_PKL);
+          }
+          changed = true;
+        }
+        if (g.stat && JSON.stringify({ ...cur.stat, at: 0 }) !== JSON.stringify({ ...g.stat, at: 0 })) {
+          cur.stat = g.stat; changed = true;
+        }
+        prev.vessels[mmsi] = cur;
+      }
+      if (changed) {
+        prev.updated_at = stampNow();
+        await env.OQC.put("ais:latest", JSON.stringify(prev));
+      }
+      stats.changed = changed;
+    }
+  } catch (e) {
+    stats.error = stats.error || ("kv: " + String(e.message || e).slice(0, 120));
+  }
+
+  /* 측정용 실행 기록 (최근 AIS_STATS_MAX회) */
+  stats.ms = Date.now() - t0;
+  try {
+    const s = await readJsonKV(env, "ais:stats", null) || { runs: [] };
+    s.runs.push(stats);
+    if (s.runs.length > AIS_STATS_MAX) s.runs = s.runs.slice(-AIS_STATS_MAX);
+    await env.OQC.put("ais:stats", JSON.stringify(s));
+  } catch (_) {}
+  return stats;
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+  // ── AIS 조회(읽기 전용) / 수동 수집(인증) ───────────────────────────
+  if (url.pathname === '/ais') {
+    const latest = await readJsonKV(env, "ais:latest", null);
+    const stats = await readJsonKV(env, "ais:stats", null);
+    const runs = (stats && stats.runs) || [];
+    return json({ source: "ais", latest, lastRun: runs[runs.length - 1] || null, runCount: runs.length });
+  }
+  if (url.pathname === '/ais-stats') {
+    return json(await readJsonKV(env, "ais:stats", { runs: [] }));
+  }
+  if (url.pathname === '/collect-ais' && req.method === 'POST') {
+    if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+    const secs = Math.min(Math.max(parseInt(url.searchParams.get('secs') || '60', 10) || 60, 5), 120);
+    return json(await pollAIS(env, secs));
+  }
+  // ── END AIS ──────────────────────────────────────────────────────
 
   // ── TEST: echemi 전체 원료 접근 테스트 (임시, DEV only) ──────────
   if (url.pathname === '/test-echemi') {
@@ -2818,6 +2966,16 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
     const trigger = isWeekly ? "cron-weekly" : isMaps ? "cron-maps" : isStaleRetry ? "cron-stale" : "cron";
 
     ctx.waitUntil((async () => {
+
+      /* ── AIS 선박 위치 수집 (5,20,35,50분 · HMM 수집과 분리, 실패해도 영향 없음) ── */
+      if (/^\s*5,20,35,50\s/.test(cron)) {
+        try {
+          await pollAIS(env, 90);
+        } catch(e) {
+          console.error('AIS poll error:', e.message);
+        }
+        return;
+      }
 
       /* ── 원자재 가격 수집 (매일 새벽 3시 KST = 18:00 UTC) ── */
       if (/^0\s+18\s+/.test(cron)) {

@@ -977,6 +977,8 @@ function proceedAfterUnlock(){
   ACCESS_ROLE = role;
   document.getElementById("gate").remove();
   applyRoleRestrictions();
+  /* 방금 로그인한 역할을 호주 관리자 버튼(ADD/EDIT)에 즉시 반영 — country-form.js 가 이미 로드돼 있을 때만 */
+  try{ if(window.CountryForm && typeof window.CountryForm.syncAdmin==="function") window.CountryForm.syncAdmin(); }catch(_){}
   const lo = document.getElementById("logout-btn");
   if(lo) lo.hidden = false;
   if(ACCESS_ROLE === "qc"){

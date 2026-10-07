@@ -84,6 +84,7 @@
 
   var PORTS = {
     klang:  { name: 'PORT KLANG', latlng: [3.0007, 101.3925] },
+    melbourne: { name: 'MELBOURNE', latlng: [-37.81, 144.96], via: true }, /* 중간 기항지(ANL AAXS: 시드니보다 먼저) */
     sydney: { name: 'SYDNEY',     latlng: [-33.86, 151.21] }
   };
 

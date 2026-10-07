@@ -1,0 +1,103 @@
+/* ═════════════════════════════════════════════════════════════════
+ * country-ui.css — 국가 필터 바 / USA 제목줄 / 호주 그룹 배치
+ *
+ * - 색·폰트는 기존 앱의 CSS 변수와 country-groups.css 에 맡긴다(새 색 금지).
+ * - 숨김은 style.display 대신 .cu-hide 클래스로만 한다.
+ * ═════════════════════════════════════════════════════════════════ */
+
+/* 지시서 전용 숨김 클래스 — 인라인 display 를 건드리지 않는다 */
+.cu-hide { display: none !important; }
+
+/* 필터 바: #mapwrap 그리드(1fr 320px)의 전체 폭 한 줄 */
+#cbar-map { grid-column: 1 / -1; }
+
+/* 목록(#cards) 쪽 필터 바 */
+#cbar-list { margin: 2px 0 10px; }
+
+/* USA 제목줄 — 기존 USA 표 바로 위 */
+#usa-head-map,
+#usa-head-list {
+  margin: 4px 0 2px;
+}
+
+#usa-head-map .cg-group-head,
+#usa-head-list .cg-group-head {
+  margin: 0 0 4px;
+}
+
+/* 호주 그룹 — USA 표/비고 아래 간격 */
+#au-map,
+#au-list {
+  margin: 14px 0 6px;
+}
+
+/* ── 호주 진행도(LIST 전용, 3차 지시서 3절) ─────────────────────────
+   USA 진행도(ref/style.css)의 #overview 규칙을 컨테이너 클래스 .cu-overview 로
+   복사·치환한 것 — 시각 구조·클래스(.orail/.cap/.cap-lb/.ov/.dot/.stem/.ol/.pc/
+   .obooked)와 색(CSS 변수)은 USA 와 동일. 값은 원본 그대로, 새 색 없음. */
+.cu-overview { border: 1px solid var(--line); background: var(--hull); padding: 22px 24px 18px; margin-bottom: 16px; }
+.cu-overview { position: relative; }
+.cu-overview h2 { font-family: 'Barlow Condensed'; font-size: 19px; letter-spacing: .06em; margin: 0 0 4px; }
+.cu-overview .sub { font-family: 'IBM Plex Mono'; font-size: 11px; color: var(--fog); margin-bottom: 26px; }
+
+.cu-overview .orail { position: relative; height: 170px; margin: 0 8px; }
+.cu-overview .orail .base { position: absolute; top: 120px; left: 0; right: 0; height: 2px; background: var(--line); }
+.cu-overview .orail .cap { position: absolute; top: 112px; width: 12px; height: 12px; border: 2px solid var(--fog);
+  background: var(--ink); border-radius: 50%; transform: translateX(-50%); }
+.cu-overview .orail .cap-lb { position: absolute; top: 138px; transform: translateX(-50%); white-space: nowrap;
+  font-family: 'IBM Plex Mono'; font-size: 10px; color: var(--fog); letter-spacing: .08em; }
+.cu-overview .orail .cap-lb.l { transform: translateX(-6px); }
+.cu-overview .orail .cap-lb.r { transform: translateX(calc(-100% + 6px)); }
+.cu-overview .orail .cap-lb .short { display: none; }
+
+.cu-overview .ov { position: absolute; transform: translateX(-50%); text-align: center; cursor: default; }
+.cu-overview .ov .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--buoy); margin: 0 auto;
+  box-shadow: 0 0 0 3px rgba(255,107,53,.18); }
+.cu-overview .ov .stem { width: 1px; background: #2A4A5E; margin: 0 auto; }
+.cu-overview .ov .lb { font-family: 'Barlow Condensed'; font-size: 13px; letter-spacing: .04em; white-space: nowrap; line-height: 1.15; }
+.cu-overview .ov:hover .lb { color: var(--sail); }
+.cu-overview .ov .pc { font-family: 'IBM Plex Mono'; font-size: 10px; color: var(--buoy); }
+.cu-overview .ov .ol { font-family: 'Barlow Condensed'; font-size: 13px; letter-spacing: .04em; white-space: nowrap; line-height: 17px; cursor: pointer; }
+.cu-overview .ov .ol:hover { color: var(--sail); }
+.cu-overview .ov .ol .pc { display: inline; margin-left: 6px; }
+.cu-overview .ov .ol-more { font-family: 'IBM Plex Mono'; font-size: 10px; line-height: 17px; color: var(--fog); }
+.cu-overview .ov .pc.s-berth { color: var(--dock); }
+.cu-overview .ov .dot.s-berth { background: var(--dock); box-shadow: 0 0 0 3px rgba(242,193,78,.18); }
+.cu-overview .ov .ov-n { position: absolute; bottom: -2px; left: calc(50% + 10px); font-family: 'IBM Plex Mono'; font-size: 9.5px; color: var(--fog); }
+
+/* 양 끝 줄기는 이름을 안쪽으로 붙여 박스 밖으로 넘치지 않게 (점은 제자리) */
+.cu-overview .ov.edge-l { transform: translateX(-6px); text-align: left; }
+.cu-overview .ov.edge-l .dot { margin-left: 0; }
+.cu-overview .ov.edge-l .stem { margin-left: 5px; }
+.cu-overview .ov.edge-r { transform: translateX(calc(-100% + 6px)); text-align: right; }
+.cu-overview .ov.edge-r .dot { margin-right: 0; }
+.cu-overview .ov.edge-r .stem { margin-right: 5px; }
+.cu-overview .ov.edge-r .ov-n { left: auto; right: 18px; }
+
+.cu-overview .obooked { display: inline-block; max-width: 100%; margin: -12px 0 18px; padding: 6px 11px; border: 1px dashed var(--line);
+  font-family: 'IBM Plex Mono'; font-size: 10.5px; line-height: 1.55; color: var(--fog); }
+.cu-overview .obooked b { display: block; font-weight: 500; letter-spacing: .12em; color: var(--paper); }
+.cu-overview .obooked .ol { cursor: pointer; }
+.cu-overview .obooked .ol:hover { color: var(--sail); }
+
+/* ── 하단 알림(3차 지시서 4절) — 항상 가장 아래 표 밖 컨테이너 ── */
+#cu-notes-map,
+#cu-notes-list {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  color: var(--warn, #F2C14E);
+}
+
+#cu-notes-map .cu-notes-head,
+#cu-notes-list .cu-notes-head {
+  margin-bottom: 2px;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--fog, #8AA4B5);
+}
+
+#cu-notes-map .cu-note-line,
+#cu-notes-list .cu-note-line {
+  line-height: 1.5;
+}

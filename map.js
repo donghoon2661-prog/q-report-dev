@@ -283,7 +283,7 @@ function getDisplayCoord(s) {
 }
 
 /* ---------- MAP ---------- */
-let map, markers=[], tileLayer;
+let map, markers=[], tileLayer, usaGroup;
 
 function initMap(data){
   if(map){ try{ map.remove(); }catch(_){} map = null; tileLayer = null; }
@@ -291,8 +291,10 @@ function initMap(data){
   map = L.map('map',{worldCopyJump:false,minZoom:2}).setView([25,175],3);
   tileLayer = L.tileLayer(TILE[THEME],
     {attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:10}).addTo(map);
+  usaGroup = L.layerGroup().addTo(map);
 
   const portSeen = {};
+  const routeDrawn = {};   /* 같은 항로선을 선적마다 겹쳐 그리면 점선이 실선처럼 보인다 — 항로당 한 번만 */
   data.shipments.forEach(s=>{
     const det = detectService(s);
     /* dense route: marnet routing 완료 상태 (route 좌표가 기항지보다 훨씬 많음) */
@@ -306,9 +308,11 @@ function initMap(data){
 
     if (hasDense) {
       /* marnet dense route — unwrapCoords 완료된 연속 경도, 선사 무관 */
-      L.polyline(s.route, {
-        color: '#1E3A4C', weight: 1.5, opacity: 0.9
-      }).addTo(map);
+      const rk = s.route.length + '|' + s.route[0] + '|' + s.route[s.route.length - 1];
+      if (!routeDrawn[rk]) L.polyline(s.route, {
+        color: cssVar('--buoy', '#FF6B35'), weight: 1.5, opacity: 0.9, dashArray: '4,4'
+      }).addTo(usaGroup);
+      routeDrawn[rk] = 1;
       /* 기항지 마커: rawRoute 기반 */
       const r = portRoute.map(wrap);
       r.forEach((p,k)=>{
@@ -316,22 +320,24 @@ function initMap(data){
         if(portSeen[key]) return; portSeen[key]=1;
         L.circleMarker(p,{radius:4,color:cssVar('--fog','#8AA4B5'),weight:1.5,
                           fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
-          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
+          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(usaGroup);
       });
     } else if (svcRoute) {
       /* PS3/PS5 수동 항로 (dense route 미도입 fallback) */
-      const lineColor = det.inferred ? '#B8860B' : '#1E3A4C';
-      L.polyline(svcRoute, {
+      const lineColor = det.inferred ? '#B8860B' : cssVar('--buoy', '#FF6B35');
+      const sk = 'svc|' + (det.svc || '') + '|' + (det.inferred ? 1 : 0);
+      if (!routeDrawn[sk]) L.polyline(svcRoute, {
         color: lineColor, weight: 1.5,
-        dashArray: det.inferred ? '4,4' : null, opacity: 0.9
-      }).addTo(map);
+        dashArray: '4,4', opacity: 0.9
+      }).addTo(usaGroup);
+      routeDrawn[sk] = 1;
       const r = portRoute.map(wrap);
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);
         if(portSeen[key]) return; portSeen[key]=1;
         L.circleMarker(p,{radius:4,color:cssVar('--fog','#8AA4B5'),weight:1.5,
                           fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
-          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
+          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(usaGroup);
       });
     } else {
       /* UNKNOWN — 기항지 마커만 */
@@ -341,7 +347,7 @@ function initMap(data){
         if(portSeen[key]) return; portSeen[key]=1;
         L.circleMarker(p,{radius:4,color:'#E53935',weight:1.5,
                           fillColor:cssVar('--ink','#07141C'),fillOpacity:1})
-          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(map);
+          .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(usaGroup);
       });
     }
   });
@@ -386,7 +392,7 @@ function initMap(data){
       const m = L.circleMarker([lat, lng], {
         radius: 8, color: cssVar('--buoy','#FF6B35'), weight: 2,
         fillColor: '#FF6B35', fillOpacity: L2.atPort ? 1 : 0.45
-      }).addTo(map);
+      }).addTo(usaGroup);
       m.bindTooltip(`${s.vessel} ${s.voyage}`, {className:'vsl-tip', direction:'top', offset:[0,-6]});
       m.on('click', () => { select(s, idx, false); showPO(s, idx); });
       markers[idx] = m;
@@ -398,7 +404,7 @@ function initMap(data){
         html: `<div style="width:28px;height:28px;border-radius:50%;background:#FF6B35;border:2px solid #FF6B35;opacity:${atPort?1:0.7};display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#07141C;line-height:1">${count}</div>`,
         iconSize: [28, 28], iconAnchor: [14, 14]
       });
-      const m = L.marker([lat, lng], { icon }).addTo(map);
+      const m = L.marker([lat, lng], { icon }).addTo(usaGroup);
       m.bindTooltip(vessels, {className:'vsl-tip', direction:'top', offset:[0,-14]});
       m.on('click', () => {
         const { s, idx } = located[grp[0]];
@@ -409,4 +415,5 @@ function initMap(data){
   });
   const uniq = [...new Set(markers.filter(Boolean))];
   if(uniq.length) map.fitBounds(L.featureGroup(uniq).getBounds().pad(0.35));
+  if (typeof window.onMapReady === 'function') { try { window.onMapReady(map, usaGroup); } catch (e) { console.error(e); } }
 }

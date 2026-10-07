@@ -362,6 +362,12 @@
      13차: cntrQty(컨테이너 대수 — plan.cntrQty 1~99 정수, 아니면 번호 개수, 없으면 null)
      14차: traqo(계약 모양 검증 통과 객체 또는 null — ais-layer.traqoOf 와 같은 규칙),
            gateIn/ret(각 { text, est } | null — GATE IN/RETURN 칸 값). */
+  /* 'ANNU'+영문3+숫자7 이면 뒤 10자(부킹), 아니면 '' */
+  function annuBooking(v) {
+    var m = /^ANNU([A-Z]{3}\d{7})$/.exec(String(v == null ? '' : v).trim().toUpperCase());
+    return m ? m[1] : '';
+  }
+
   function auRows(aisJson) {
     var rows = [];
     if (!aisJson || typeof aisJson !== 'object') return rows;
@@ -382,8 +388,11 @@
       var etb = plan.etb != null ? String(plan.etb) : '';
       var eta = plan.eta != null ? String(plan.eta) : '';
       var booking = plan.booking != null ? String(plan.booking) : '';
+      /* 부킹이 저장돼 있지 않으면 ANL MBL(ANNU+부킹)에서 뒤쪽 10자를 쓴다 */
+      if (!booking) booking = annuBooking(plan.mbl != null ? plan.mbl : mbl);
       var scheduleInherited = plan.scheduleInherited === true;
       var scheduleFromBooking = plan.scheduleFromBooking != null ? String(plan.scheduleFromBooking) : '';
+      scheduleFromBooking = annuBooking(scheduleFromBooking) || scheduleFromBooking;
       var po = Array.isArray(plan.po)
         ? plan.po.map(function (x) { return x == null ? '' : String(x); })
           .filter(function (s) { return s !== ''; })

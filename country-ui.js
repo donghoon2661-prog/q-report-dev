@@ -265,6 +265,20 @@
          : (m.mbl != null ? String(m.mbl) : '');
   }
 
+  /* [17차] 중간 기항지(멜버른) 눈금 — 항로(ROUTE)상 가장 가까운 지점의 진행 비율에 작은 점 + 이름.
+     AisLayer 가 PORTS.melbourne 과 routeProgress 를 줄 때만 그린다. */
+  function viaTick(AL) {
+    try {
+      var p = AL && AL.PORTS && AL.PORTS.melbourne;
+      if (!p || typeof AL.routeProgress !== 'function') return '';
+      var rp = AL.routeProgress(p.latlng[0], p.latlng[1]);
+      if (!rp || typeof rp.frac !== 'number' || !isFinite(rp.frac)) return '';
+      var x = Math.max(2, Math.min(98, rp.frac * 100));
+      return '<div class="cap via" style="left:' + x + '%"></div>'
+        + '<div class="cap-lb via" style="left:' + x + '%">' + esc(p.name) + '</div>';
+    } catch (e) { return ''; }
+  }
+
   function overviewHtml(models, nowMs) {
     var AL = getAisLayer();
     if (!AL || typeof AL.stageOf !== 'function') return '';
@@ -350,6 +364,7 @@
       +   '<div class="base"></div>'
       +   '<div class="cap" style="left:0"></div><div class="cap-lb l" style="left:0">PORT KLANG</div>'
       +   '<div class="cap" style="left:100%"></div><div class="cap-lb r" style="left:100%"><span class="full">SYDNEY</span><span class="short">SYD</span></div>'
+      +   viaTick(AL)
       +   marks
       + '</div></div>';
   }

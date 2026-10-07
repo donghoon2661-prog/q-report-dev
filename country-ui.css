@@ -101,3 +101,7 @@
 #cu-notes-list .cu-note-line {
   line-height: 1.5;
 }
+
+/* [17차] 중간 기항지(멜버른) 눈금: 양 끝(12px)보다 작은 점 + 작은 이름 */
+.cu-overview .orail .cap.via { width: 8px; height: 8px; top: 114px; margin-left: -2px; }
+.cu-overview .orail .cap-lb.via { font-size: 9px; opacity: .8; top: 134px; }

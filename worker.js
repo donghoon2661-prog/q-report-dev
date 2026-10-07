@@ -2170,10 +2170,46 @@ async function aisText(data) {
   return new TextDecoder().decode(data);
 }
 
+/* 저장된 선적(ais:plans)에서 추적할 선박 목록을 만든다(순수 함수).
+   유효한 mmsi(9자리)별로 하나, 먼저 나온 값 우선. 유효한 mmsi 가 하나도 없으면 defaults 를 그대로 돌려준다(기존 동작). */
+const AIS_MAX_VESSELS = 20;   // 최대 추적 선박 수(초과분은 무시)
+
+function aisVesselsFromPlans(store, defaults) {
+  const plans = (store && store.plans) || {};
+  const seen = new Set();
+  const vessels = [];
+  for (const plan of Object.values(plans)) {
+    const mmsi = plan && typeof plan === "object" ? String(plan.mmsi ?? "") : "";
+    if (!/^\d{9}$/.test(mmsi) || seen.has(mmsi)) continue;
+    seen.add(mmsi);
+    const imoRaw = plan.imo;
+    const v = { mmsi };
+    if (imoRaw !== undefined && imoRaw !== null && String(imoRaw).trim() !== "" && Number.isFinite(Number(imoRaw))) v.imo = Number(imoRaw);
+    v.name = String(plan.vessel ?? "").trim() || mmsi;
+    vessels.push(v);
+    if (vessels.length >= AIS_MAX_VESSELS) break;
+  }
+  return vessels.length ? vessels : (defaults || AIS_VESSELS);
+}
+
 async function pollAIS(env, secs = 90) {
   const t0 = Date.now();
   const stats = { at: stampNow(), secs, msgs: 0, pos: 0, stat: 0, ms: 0, error: null };
   const got = {};
+  /* 저장된 선적(ais:plans)에서 추적 선박 목록을 만든다. 유효한 mmsi 가 없으면 기본값(AIS_VESSELS) 사용. */
+  let vessels = AIS_VESSELS, vesselsDropped = 0;
+  try {
+    const pstore = await readJsonKV(env, "ais:plans", null) || { plans: {} };
+    vessels = aisVesselsFromPlans(pstore, AIS_VESSELS);
+    const mset = new Set();
+    for (const p of Object.values(pstore.plans || {})) {
+      const m = p && typeof p === "object" ? String(p.mmsi ?? "") : "";
+      if (/^\d{9}$/.test(m)) mset.add(m);
+    }
+    vesselsDropped = Math.max(0, mset.size - vessels.length);
+  } catch (_) {}
+  stats.vessels = vessels.length;
+  stats.vesselsDropped = vesselsDropped;
   let ws = null;
 
   if (!env.AISSTREAM_KEY) {
@@ -2196,7 +2232,7 @@ async function pollAIS(env, secs = 90) {
             stats.msgs++;
             const md = m.MetaData || {};
             const mmsi = String(md.MMSI ?? "");
-            if (!AIS_VESSELS.some(v => v.mmsi === mmsi)) return;
+            if (!vessels.some(v => v.mmsi === mmsi)) return;
             const body = (m.Message || {})[m.MessageType] || {};
             const slot = got[mmsi] || (got[mmsi] = {});
             if (m.MessageType === "PositionReport") {
@@ -2224,7 +2260,7 @@ async function pollAIS(env, secs = 90) {
         ws.send(JSON.stringify({
           APIKey: env.AISSTREAM_KEY,
           BoundingBoxes: [[[-90, -180], [90, 180]]],
-          FiltersShipMMSI: AIS_VESSELS.map(v => v.mmsi),
+          FiltersShipMMSI: vessels.map(v => v.mmsi),
           FilterMessageTypes: ["PositionReport", "ShipStaticData"]
         }));
       });
@@ -2241,7 +2277,7 @@ async function pollAIS(env, secs = 90) {
       const prev = await readJsonKV(env, "ais:latest", null) || { vessels: {} };
       let changed = false;
       for (const [mmsi, g] of Object.entries(got)) {
-        const meta = AIS_VESSELS.find(v => v.mmsi === mmsi);
+        const meta = vessels.find(v => v.mmsi === mmsi);
         const cur = prev.vessels[mmsi] || { mmsi, imo: meta.imo, name: meta.name };
         if (g.pos && (!cur.pos || cur.pos.at !== g.pos.at)) {
           cur.pos = g.pos;
@@ -2268,6 +2304,10 @@ async function pollAIS(env, secs = 90) {
 
   /* 측정용 실행 기록 (최근 AIS_STATS_MAX회) */
   stats.ms = Date.now() - t0;
+  /* Traqo 연동(3차): 같은 크론 실행에서 선적 동기화를 마치고 같은 stats 기록에 요약을 남긴다.
+     실행 기록(ais:stats) 저장 직전에 실행해 /ais-stats 의 마지막 기록에도 보이게 하고,
+     어떤 예외가 나도 통계 기록·AIS 수집 결과 저장을 막지 않는다. ms 는 AIS 수집 시간만 재도록 위에서 계산됨. */
+  try { stats.traqo = await syncTraqo(env); } catch (e) { stats.traqo = { error: "sync failed" }; }
   try {
     const s = await readJsonKV(env, "ais:stats", null) || { runs: [] };
     s.runs.push(stats);
@@ -2279,33 +2319,633 @@ async function pollAIS(env, secs = 90) {
 
 /* ── 선사 일정 수동 입력 (KV ais:plans) ───────────────────────────────
    AIS에는 부킹·선사 일정이 없어서, 선사 사이트에서 확인한 계획 일정을 MBL별로 사람이 입력한다.
-   plans[mbl] = { mbl, container, vessel, voyage, imo, mmsi, pol, pod, etd, eta, podTerminal, source, note, updated_at } */
-const AIS_PLAN_FIELDS = ["container", "carrier", "vessel", "voyage", "imo", "mmsi", "pol", "pod", "etd", "eta", "podTerminal", "source", "note"];
+   plans[mbl] = { mbl, container, booking, vessel, voyage, imo, mmsi, pol, pod, etd, etb, eta, podTerminal, source, note, po, scheduleFrom, cntrQty, traqo, updated_at } */
+const AIS_PLAN_FIELDS = ["container", "booking", "carrier", "vessel", "voyage", "imo", "mmsi", "pol", "pod", "etd", "etb", "eta", "podTerminal", "source", "note"];
+
+/* scheduleFrom 으로 연결된 선적의 일정을 따라온 선적에 채워 넣는다(순수 함수, 입력을 바꾸지 않는다).
+   대상에 값이 있는 필드만 덮어쓰고, 대상이 사라졌거나 형식이 잘못된 참조(고아)는 조용히 무시한다. */
+const AIS_INHERIT_FIELDS = ["etd", "etb", "eta", "podTerminal", "source"];
+
+function resolvePlans(store) {
+  const plans = (store && store.plans) || {};
+  const out = { ...(store && typeof store === "object" ? store : {}), plans: {} };
+  for (const [mbl, plan] of Object.entries(plans)) {
+    out.plans[mbl] = (plan && typeof plan === "object") ? { ...plan } : plan;
+  }
+  for (const cur of Object.values(out.plans)) {
+    if (!cur || typeof cur !== "object") continue;   // 형식이 잘못된 항목은 무시
+    const sf = cur.scheduleFrom;
+    if (typeof sf !== "string" || !sf) continue;
+    const target = plans[sf];
+    if (!target || typeof target !== "object") continue;
+    cur.scheduleInherited = true;
+    cur.scheduleFromBooking = target.booking || sf;
+    for (const f of AIS_INHERIT_FIELDS) {
+      if (target[f]) cur[f] = target[f];
+    }
+  }
+  return out;
+}
+
+function parsePoInput(raw) {
+  /* po 입력 규칙(saveAisPlan/addAisPlan 공유): 문자열 배열 또는 줄바꿈/쉼표 문자열 → 항목 trim·대문자화·
+     중복 제거·최대 20개. 형식 오류나 21개 초과면 { error }, 정상이면 { po: ["AU-…"] }. */
+  const items = Array.isArray(raw) ? raw.map(x => String(x ?? "")) : String(raw ?? "").split(/[\r\n,]+/);
+  const pos = [];
+  for (const item of items) {
+    const p = item.trim().toUpperCase();
+    if (!p) continue;
+    if (!/^AU-\d{6,12}$/.test(p)) return { error: "po must look like AU-1924661260 (bad: " + p + ")" };
+    if (!pos.includes(p)) pos.push(p);
+  }
+  if (pos.length > 20) return { error: "po must be 20 items or fewer (got: " + pos.length + ")" };
+  return { po: pos };
+}
 
 async function saveAisPlan(env, body) {
   const mbl = String(body && body.mbl || "").trim().toUpperCase();
   if (!/^[A-Z0-9]{6,24}$/.test(mbl)) return { error: "mbl required (6-24 letters/digits)" };
   const store = await readJsonKV(env, "ais:plans", null) || { plans: {} };
   if (body.delete === true) {
+    /* 삭제 보호: 다른 선적이 이 선적의 일정을 따라오면 삭제하지 않는다 */
+    const followers = Object.keys(store.plans || {})
+      .filter(k => k !== mbl && store.plans[k] && store.plans[k].scheduleFrom === mbl).sort();
+    if (followers.length) return { error: "followed by: " + followers.join(", ") };
     const had = !!store.plans[mbl];
     delete store.plans[mbl];
     await env.OQC.put("ais:plans", JSON.stringify(store));
     return { ok: true, deleted: had, mbl };
   }
+  const isNew = !store.plans[mbl];
   const cur = store.plans[mbl] || { mbl };
   for (const f of AIS_PLAN_FIELDS) {
     if (body[f] === undefined) continue;
     const v = String(body[f] ?? "").trim().slice(0, 120);
-    if ((f === "etd" || f === "eta") && v && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(v)) return { error: f + " must be YYYY-MM-DD or YYYY-MM-DDTHH:MM" };
+    if ((f === "etd" || f === "eta" || f === "etb") && v && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(v)) return { error: f + " must be YYYY-MM-DD or YYYY-MM-DDTHH:MM" };
     if ((f === "imo" || f === "mmsi") && v && !/^\d{7,9}$/.test(v)) return { error: f + " must be digits" };
+    if (f === "booking") {
+      const b = v.toUpperCase();
+      if (b && !/^[A-Z]{3}\d{7}$/.test(b)) return { error: "booking must be 3 letters + 7 digits (e.g. CDB0585621)" };
+      cur[f] = b;
+      continue;
+    }
     cur[f] = v;
   }
+  /* po: 규칙은 parsePoInput(saveAisPlan/addAisPlan 공유). 빈 배열/빈 문자열을 보내면 PO 를 비운다. */
+  if (body.po !== undefined) {
+    const pr = parsePoInput(body.po);
+    if (pr.error) return pr;
+    cur.po = pr.po;
+  }
+  /* cntrQty: 컨테이너 대수. 숫자 또는 숫자 문자열, 1~99 의 정수로 저장(저장 형태는 숫자).
+     빈 문자열/null 을 보내면 값을 지우고, 미전송(undefined)이면 기존 값 유지. po/scheduleFrom 처럼 별도 블록으로 처리. */
+  if (body.cntrQty !== undefined) {
+    if (body.cntrQty === null || body.cntrQty === "") {
+      delete cur.cntrQty;
+    } else {
+      const n = (typeof body.cntrQty === "number" || typeof body.cntrQty === "string") ? Number(body.cntrQty) : NaN;
+      if (!Number.isInteger(n) || n < 1 || n > 99) return { error: "cntrQty must be a whole number from 1 to 99" };
+      cur.cntrQty = n;
+    }
+  }
+  /* traqo: Traqo 연동 opt-in 스위치(선적별, 기본 꺼짐). 3차 지시서.
+     true/false, 문자열 "true"/"false"/"1"/"0"/"yes"/"no" 를 받아 boolean 으로 저장한다.
+     빈 문자열/null 은 false. 그 외 값은 오류. 미전송(undefined)이면 기존 값 유지. */
+  if (body.traqo !== undefined) {
+    const v = body.traqo;
+    const s = typeof v === "string" ? v.trim().toLowerCase() : null;
+    if (v === true || s === "true" || s === "1" || s === "yes") cur.traqo = true;
+    else if (v === false || v === null || v === "" || s === "false" || s === "0" || s === "no") cur.traqo = false;
+    else return { error: "traqo must be true or false" };
+  }
+  /* scheduleFrom: 이 선적의 일정을 다른 선적에서 따라온다. 빈 문자열이면 해제. 한 단계만 허용. */
+  if (body.scheduleFrom !== undefined) {
+    const sf = String(body.scheduleFrom ?? "").trim().toUpperCase();
+    if (sf) {
+      if (sf === mbl) return { error: "scheduleFrom cannot point to itself" };
+      const target = (store.plans || {})[sf];
+      if (!target) return { error: "scheduleFrom target not found: " + sf };
+      if (target.scheduleFrom) return { error: "scheduleFrom target already follows another shipment" };
+      const followedBy = Object.keys(store.plans || {})
+        .filter(k => k !== mbl && store.plans[k] && store.plans[k].scheduleFrom === mbl);
+      if (followedBy.length) return { error: "this shipment is followed by others" };
+    }
+    cur.scheduleFrom = sf;
+  }
+  /* booking 자동 채움: 신규 생성 시 한해, mbl 이 ANNU+부킹 형태(예: ANNUCDB0585621)면 뒤쪽을 booking 으로 채운다 */
+  if (isNew && !cur.booking && /^ANNU[A-Z]{3}\d{7}$/.test(mbl)) cur.booking = mbl.slice(4);
   cur.updated_at = stampNow();
   store.plans[mbl] = cur;
   await env.OQC.put("ais:plans", JSON.stringify(store));
   return { ok: true, plan: cur };
 }
 
+/* ── Traqo 연동 (컨테이너 추적 무료 API, 호주 선적 전용, 3차 지시서) ──
+   traqo:true 로 opt-in 한 선적만 조회한다(새 선적 1건 조회마다 월 무료 슬롯 1개 소모).
+   일정·컨테이너·이벤트·선박 위치를 정규화 형태로 KV ais:traqo 에 저장한다.
+   조회가 실패해도 마지막 성공 데이터는 남기고 오류 정보만 덮어쓴다. */
+const TRAQO_URL = "https://traqocontainer.com/api/v1";
+const TRAQO_HRS_OK = 12;        // 조회 성공 후 재조회 간격(시간)
+const TRAQO_HRS_ERR = 6;        // 오류 후 재조회 간격(402/404/기타 구분 아래 함수)
+const TRAQO_HRS_LATE = 24;      // 402(무료 슬롯 초과)/404 후 재조회 간격
+const TRAQO_POS_MINS = 30;      // 선박 위치 재조회 최소 간격(분)
+const TRAQO_POS_MAX_CALLS = 20; // 한 번 실행에서 선박 위치 조회 최대 횟수
+const TRAQO_TIMEOUT_MS = 15000; // 모든 Traqo fetch 의 시간제한(AbortController)
+
+/* 재조회 시각: 성공 → +12시간, 402/404 → +24시간, 그 외(429 포함) → +6시간 */
+function traqoNextDue(nowMs, status) {
+  const hrs = status === "ok" ? TRAQO_HRS_OK : (status === 402 || status === 404 ? TRAQO_HRS_LATE : TRAQO_HRS_ERR);
+  return new Date(nowMs + hrs * 3600000).toISOString();
+}
+
+/* API 날짜 문자열("YYYY-MM-DD HH:MM:SS", UTC; 날짜만 있는 형태도 허용) → ISO UTC 문자열("2026-10-12T05:00:00Z").
+   이미 ISO 형태여도 같은 경로로 정규화한다. 해석이 불가한 값은 null. */
+function traqoIso(v) {
+  const s = String(v ?? "").trim();
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?$/.exec(s);
+  if (!m) return null;
+  const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)));
+  if (isNaN(dt.getTime())) return null;
+  /* 넘친 날짜(2월 30일 등)는 원래 값으로 되돌아오는지 확인해 거부 */
+  if (dt.getUTCFullYear() !== +m[1] || dt.getUTCMonth() !== +m[2] - 1 || dt.getUTCDate() !== +m[3]) return null;
+  return dt.toISOString().replace(".000Z", "Z");
+}
+
+function traqoMs(v) {   // ISO 문자열 → epoch ms, 해석 불가면 null
+  const t = Date.parse(String(v ?? ""));
+  return Number.isFinite(t) ? t : null;
+}
+
+/* 문자열 정리: trim 후 빈 값이면 null, 아니면 그 문자열 */
+function traqoText(v) {
+  const s = String(v ?? "").trim();
+  return s ? s : null;
+}
+
+function traqoInt(v) {   // 정수(숫자 또는 숫자 문자열) → Number, 아니면 null
+  const n = typeof v === "number" ? v : (String(v ?? "").trim() === "" ? NaN : Number(v));
+  return Number.isInteger(n) ? n : null;
+}
+
+function traqoNum(v) {   // 숫자(숫자 또는 숫자 문자열) → Number, 아니면 null
+  const n = typeof v === "number" ? v : (String(v ?? "").trim() === "" ? NaN : Number(v));
+  return Number.isFinite(n) ? n : null;
+}
+
+/* Normalized 의 기본 모양(값 없음). 키 순서는 UI 계약과 같다. */
+function blankTraqo() {
+  return {
+    enabled: true, status: "ok", error: null, syncedAt: null, nextDueAt: null, reference: null,
+    etdUtc: null, atdUtc: null, etaUtc: null, ataUtc: null, cntrQty: null,
+    containers: [], vessel: null, events: []
+  };
+}
+
+/* Traqo 원본 BL 응답의 data 부분을 UI 계약 형태(Normalized)로 바꾼다(순수 함수, 원본을 바꾸지 않는다).
+   - etdUtc/atdUtc: voyage_plan_table 의 leg:"pol" 항목에서. 항목에 값이 있는 필드를 각각 채운다
+     (정상 데이터에서 is_actual=1 이면 atd 가, 아니면 etd 가 들어 있으므로 "값이 있을 때 채움"이 규칙과 같다).
+   - etaUtc/ataUtc: leg:"pod" 항목에서 채우고, pod 항목에 없는 eta/ata 는 최상위 eta/ata 로 대체.
+   - events: events_table 을 날짜 오름차순으로. event_type "EQUIPMENT" → equipment, 그 외 transport.
+   - 형식이 이상한 항목/필드는 null 또는 빈 배열로 두고, 없는 것은 만들지 않는다. */
+function normalizeTraqo(data) {
+  const d = data && typeof data === "object" ? data : {};
+  const rec = blankTraqo();
+  const ref = traqoText(d.reference_number);
+  if (ref) rec.reference = ref;
+  const nq = d.number_of_containers;
+  const nqInt = typeof nq === "number" ? (Number.isInteger(nq) && nq >= 0 ? nq : null) : traqoInt(nq);
+  if (nqInt !== null && nqInt >= 0) rec.cntrQty = nqInt;
+  rec.containers = (Array.isArray(d.containers_table) ? d.containers_table : [])
+    .filter(c => c && typeof c === "object" && traqoText(c.container_number))
+    .map(c => ({ number: traqoText(c.container_number), type: traqoText(c.size_type) }));
+  const vt = (Array.isArray(d.vessels_table) ? d.vessels_table : []).filter(v => v && typeof v === "object");
+  const vsel = vt.find(v => v.is_current) || vt.find(v => traqoText(v.vessel)) || null;
+  if (vsel) rec.vessel = { name: traqoText(vsel.vessel), imo: traqoInt(vsel.imo), mmsi: traqoText(vsel.mmsi) };
+  const legs = (Array.isArray(d.voyage_plan_table) ? d.voyage_plan_table : []).filter(l => l && typeof l === "object");
+  const pol = legs.find(l => String(l.leg ?? "").trim().toUpperCase() === "POL");
+  const pod = legs.find(l => String(l.leg ?? "").trim().toUpperCase() === "POD");
+  if (pol) { rec.etdUtc = traqoIso(pol.etd); rec.atdUtc = traqoIso(pol.atd); }
+  if (pod) { rec.etaUtc = traqoIso(pod.eta); rec.ataUtc = traqoIso(pod.ata); }
+  if (!rec.etaUtc) rec.etaUtc = traqoIso(d.eta);
+  if (!rec.ataUtc) rec.ataUtc = traqoIso(d.ata);
+  rec.events = (Array.isArray(d.events_table) ? d.events_table : [])
+    .filter(e => e && typeof e === "object")
+    .map(e => ({
+      kind: String(e.event_type ?? "").trim().toUpperCase() === "EQUIPMENT" ? "equipment" : "transport",
+      code: traqoText(e.event_code),
+      description: traqoText(e.description),
+      date: traqoIso(e.date),
+      isActual: !!(e.is_actual ?? false),
+      locode: traqoText(e.locode),
+      location: traqoText(e.location),
+      container: traqoText(e.container_number)
+    }))
+    .sort((a, b) => {
+      /* 날짜 오름차순. 날짜가 없거나 해석 불가한 항목은 맨 뒤로. */
+      const ta = a.date === null ? Infinity : Date.parse(a.date);
+      const tb = b.date === null ? Infinity : Date.parse(b.date);
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
+  return rec;
+}
+
+/* Go 스타일 저장 문자열("YYYY-MM-DD HH:MM:SS[.나머지] +0000 UTC") → epoch ms, 해석 불가면 null */
+function goAtMs(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d+))? ([+-]\d{2}):?(\d{2})? UTC$/.exec(String(s ?? ""));
+  if (!m) return null;
+  const frac = m[7] ? Math.round(Number("0." + m[7]) * 1000) : 0;
+  const off = (m[8][0] === "-" ? -1 : 1) * ((+m[8].slice(1)) * 3600000 + Number(m[9] || "0") * 60000);
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], frac) - off;
+  return Number.isFinite(t) ? t : null;
+}
+
+/* ISO UTC 문자열 → 저장된 pos.at 와 같은 형식의 문자열("YYYY-MM-DD HH:MM:SS +0000 UTC").
+   Go 의 표기와 같게 밀리초는 0 이 아니면 뒤의 0 을 잘라 표기한다. 해석 불가면 null. */
+function isoToGoAt(iso) {
+  const t = traqoMs(iso);
+  if (t === null) return null;
+  const d = new Date(t);
+  const z = n => String(n).padStart(2, "0");
+  let out = d.getUTCFullYear() + "-" + z(d.getUTCMonth() + 1) + "-" + z(d.getUTCDate()) + " " +
+    z(d.getUTCHours()) + ":" + z(d.getUTCMinutes()) + ":" + z(d.getUTCSeconds());
+  if (d.getUTCMilliseconds()) out += "." + String(d.getUTCMilliseconds()).replace(/0+$/, "");
+  return out + " +0000 UTC";
+}
+
+/* /ais 응답용: 저장된 ais:latest 와 Traqo 선박 위치를 합친 새 객체를 돌려준다(입력은 바꾸지 않는다).
+   - Traqo 위치가 더 최근이면 그 선박의 pos 를 같은 형식으로 변환해 채우고 source:"traqo"
+     (timestamp ISO → at 문자열, speed→sog, course_over_ground→cog, true_heading→heading).
+   - AIS 값이 더 최근이거나 같으면 저장된 pos 를 그대로 두고 source:"aisstream" 만 응답용 복사본에 붙인다.
+   - latest 에 없는 선박은 Traqo 위치만으로 새 항목을 만들고, latest 가 없으면 { vessels, updated_at } 형태로 만든다.
+   - Traqo 위치가 유효하지 않거나(lat/lon 숫자 아님, at 해석 불가) 하나도 없으면 저장값을 그대로 내려준다.
+     저장된 ais:latest 를 바꾸지 않는다. */
+function mergeVesselPositions(latest, traqoVessels) {
+  const tv = (traqoVessels && typeof traqoVessels === "object") ? traqoVessels : {};
+  const src = (latest && typeof latest === "object") ? latest : null;
+  const srcV = (src && src.vessels && typeof src.vessels === "object") ? src.vessels : {};
+  const outV = {};
+  const mmsiSet = new Set(Object.keys(srcV).concat(Object.keys(tv)));
+  for (const mmsi of mmsiSet) {
+    const l = (srcV[mmsi] && typeof srcV[mmsi] === "object") ? srcV[mmsi] : null;
+    const t = (tv[mmsi] && typeof tv[mmsi] === "object") ? tv[mmsi] : null;
+    const tGoAt = t ? isoToGoAt(t.at) : null;
+    const tValid = !!(t && typeof t.lat === "number" && typeof t.lon === "number" && tGoAt);
+    if (!l && !tValid) continue;   // 어느 쪽 자료도 없는 mmsi 는 만들지 않는다
+    if (!tValid) {
+      /* AIS 값만 있음: 응답용 복사본에 source:"aisstream" 을 붙인다 */
+      const keep = Object.assign({}, l);
+      if (keep.pos && typeof keep.pos === "object") keep.pos = Object.assign({}, keep.pos, { source: "aisstream" });
+      outV[mmsi] = keep;
+      continue;
+    }
+    const curPos = l && l.pos && typeof l.pos === "object" ? l.pos : null;
+    const curMs = curPos ? goAtMs(curPos.at) : null;
+    /* Traqo 가 더 최근일 때만 바꾼다(같으면 AIS 유지) */
+    if (!curMs || (traqoMs(t.at) !== null && traqoMs(t.at) > curMs)) {
+      const pos = { lat: t.lat, lon: t.lon, sog: t.sog, cog: t.cog, heading: t.heading, nav: t.nav, at: tGoAt, source: "traqo" };
+      const entry = Object.assign({}, l || { mmsi });
+      entry.mmsi = mmsi;
+      entry.pos = pos;
+      entry.lastSeen = pos.at;
+      entry.distPklNm = aisDistNm(pos.lat, pos.lon, AIS_PKL);
+      outV[mmsi] = entry;
+    } else {
+      const entry = Object.assign({}, l);
+      if (curPos) entry.pos = Object.assign({}, curPos, { source: "aisstream" });
+      outV[mmsi] = entry;
+    }
+  }
+  if (!src && !Object.keys(outV).length) return null;   // 변화 없음
+  const out = Object.assign({}, src || {});
+  out.vessels = outV;
+  if (!src) out.updated_at = stampNow();   // latest 가 없어 새로 만든 snapshot 의 시각
+  return out;
+}
+
+/* BL 조회 응답 상태 → 짧은 영문 오류 문구(null 이면 성공) */
+function traqoErrorOf(status, body) {
+  if (status === 402) return "shipment limit reached";
+  if (status === 404) return "not found";
+  if (status === 429) return "rate limited";
+  if (status >= 200 && status < 300) {
+    /* 200 인데 본문/ data 가 비어 있으면 성공으로 볼 수 없다 */
+    return body && typeof body === "object" && body.data && typeof body.data === "object" ? null : "not found";
+  }
+  return "HTTP " + status;
+}
+
+/* Traqo fetch: 15초 시간제한(AbortController). 키는 Authorization 헤더로만 보낸다(URL 에 넣지 않음).
+   성공 여부와 관계없이 { status, body } 를 돌려준다( JSON 해석 실패 시 body null). */
+async function traqoFetchJson(url, key) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TRAQO_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, { headers: { Authorization: "Bearer " + key }, signal: ac.signal });
+    let body = null;
+    try { body = await resp.json(); } catch (_) {}
+    return { status: resp.status, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* Traqo 동기화(pollAIS 끝, POST /traqo-sync 에서 호출).
+   ais:plans 중 traqo === true 이고 부킹 번호를 알 수 있는 선적을 조회해서 ais:traqo 에 저장한다.
+   - 부킹 번호: plan.booking 이 우선, 없으면 mbl 이 ANNU+영문3+숫자7 형태일 때 뒤쪽 10자.
+   - 갱신 주기: nextDueAt 이 지났을 때만 조회(처음이면 즉시). opts.force = true 이면 주기를 무시한다
+     (단, 마지막 조회가 429 로 끝난 상태면 다시 때리지 않는다).
+   - 선박 위치: 유효 imo(7자리)+mmsi(9자리) 쌍 별로 30분 이상 지나면 /vessel/track 조회.
+     한 번 실행에 최대 20회, 429 를 받으면 즉시 중단.
+   - 요약: { checked, synced, errors, positions } — 숫자만. 부킹 번호·MMSI·키는 담지 않는다. */
+async function syncTraqo(env, opts) {
+  if (!env || !env.TRAQO_API_KEY) return { skipped: "no key" };
+  const force = !!(opts && opts.force);
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const planStore = (await readJsonKV(env, "ais:plans", null)) || { plans: {} };
+  const prev = (await readJsonKV(env, "ais:traqo", null)) || {};
+  const prevShip = (prev && typeof prev === "object" && prev.shipments && typeof prev.shipments === "object") ? prev.shipments : {};
+  const prevPos = (prev && typeof prev === "object" && prev.vessels && typeof prev.vessels === "object") ? prev.vessels : {};
+  const shipments = Object.assign({}, prevShip);
+  const vessels = Object.assign({}, prevPos);
+  const sum = { checked: 0, synced: 0, errors: 0, positions: 0 };
+
+  const bookingOf = plan => {
+    const b = traqoText(plan && plan.booking);
+    if (b) return b;
+    const mb = String((plan && plan.mbl) ?? "").trim().toUpperCase();
+    return /^ANNU[A-Z]{3}\d{7}$/.test(mb) ? mb.slice(4) : null;
+  };
+
+  /* 위치 조회 후보(고유 mmsi 쌍): 선적 자체의 imo/mmsi 먼저, 이번에 조회한 BL 의 vessels_table 이 다음 */
+  const posPairs = [];
+  const posSeen = new Set();
+  const addPair = (imo, mmsi) => {
+    const i = String(imo ?? "").trim(), m = String(mmsi ?? "").trim();
+    if (!/^\d{7}$/.test(i) || !/^\d{9}$/.test(m) || posSeen.has(m)) return;
+    posSeen.add(m);
+    posPairs.push([i, m]);
+  };
+
+  const targets = [];
+  for (const [key, plan] of Object.entries(planStore.plans || {})) {
+    if (!plan || plan.traqo !== true) continue;
+    const bkg = bookingOf(plan);
+    if (!bkg) continue;
+    targets.push({ key, plan, bkg });
+    addPair(plan.imo, plan.mmsi);
+  }
+
+  let stopAll = false;   // 429 를 받으면 즉시 중단(남은 선적·위치 조회 모두 스킵)
+
+  /* 1단계: 선적(부킹) 조회 */
+  for (const t of targets) {
+    if (stopAll) break;
+    const prevRec = (prevShip[t.key] && typeof prevShip[t.key] === "object") ? prevShip[t.key] : null;
+    const nextDueMs = prevRec && prevRec.nextDueAt ? traqoMs(prevRec.nextDueAt) : null;
+    /* 429 로 끝난 상태에서 유효기간이 남아 있으면 force 로도 다시 조회하지 않는다 */
+    const pending429 = !!(prevRec && prevRec.status === "error" && prevRec.error === "rate limited" &&
+      nextDueMs !== null && nextDueMs > nowMs);
+    if (pending429) continue;
+    /* 갱신 주기: nextDueAt 이 지났거나 처음일 때만(force 이면 무시) */
+    if (!force && nextDueMs !== null && nextDueMs > nowMs) continue;
+    sum.checked++;
+    let res = null, status = 0, err = null;
+    try {
+      res = await traqoFetchJson(TRAQO_URL + "/bl/" + encodeURIComponent(t.bkg) +
+        (String((t.plan.carrier ?? "")).trim().toUpperCase() === "ANL" ? "?sealine=ANNU" : ""), env.TRAQO_API_KEY);
+      status = res.status;
+      err = status === 429 ? "rate limited" : traqoErrorOf(status, res.body);
+    } catch (_) {
+      err = "network error";   // 시간초단(abort)·네트워크 오류 포함
+    }
+    if (!err) {
+      const rec = normalizeTraqo(res.body.data);
+      rec.syncedAt = nowIso;
+      rec.nextDueAt = traqoNextDue(nowMs, "ok");
+      shipments[t.key] = rec;
+      sum.synced++;
+      const vt = Array.isArray(res.body.data.vessels_table) ? res.body.data.vessels_table : [];
+      for (const v of vt) if (v && typeof v === "object") addPair(v.imo, v.mmsi);
+    } else {
+      /* 마지막 성공 데이터는 남기고(이전 레코드 유지) 오류 정보만 덮어쓴다 */
+      const rec = Object.assign({}, blankTraqo(), prevShip[t.key] || null, {
+        status: "error", error: err, syncedAt: nowIso, nextDueAt: traqoNextDue(nowMs, status)
+      });
+      shipments[t.key] = rec;
+      sum.errors++;
+    }
+    if (status === 429) stopAll = true;
+  }
+
+  /* 2단계: 선박 위치(선적 조회 → 위치 조회 순서). 유효한 쌍만, 30분 간격, 최대 20회. */
+  let posCalls = 0;
+  for (const [imo, mmsi] of posPairs) {
+    if (stopAll || posCalls >= TRAQO_POS_MAX_CALLS) break;
+    const prevP = (vessels[mmsi] && typeof vessels[mmsi] === "object") ? vessels[mmsi] : null;
+    const fetchedAtMs = prevP && prevP.fetchedAt ? traqoMs(prevP.fetchedAt) : null;
+    /* 마지막 조회가 30분 이상 지났을 때만 */
+    if (fetchedAtMs !== null && nowMs - fetchedAtMs < TRAQO_POS_MINS * 60000) continue;
+    posCalls++;
+    try {
+      const res = await traqoFetchJson(TRAQO_URL + "/vessel/track?imo=" + imo + "&mmsi=" + mmsi, env.TRAQO_API_KEY);
+      if (res.status === 429) { stopAll = true; break; }
+      const d2 = res.body && typeof res.body === "object" ? res.body.data : null;
+      if (res.status >= 200 && res.status < 300 && d2 && typeof d2 === "object") {
+        vessels[mmsi] = {
+          lat: traqoNum(d2.lat), lon: traqoNum(d2.lon),
+          sog: traqoNum(d2.speed), cog: traqoNum(d2.course_over_ground),
+          heading: traqoNum(d2.true_heading), nav: traqoNum(d2.navigation_status),
+          at: traqoText(d2.timestamp), destination: traqoText(d2.destination_port), fetchedAt: nowIso
+        };
+        sum.positions++;
+      }
+    } catch (_) {
+      /* 위치 조회 실패는 이전 위치를 그대로 두고 넘어간다 */
+    }
+  }
+
+  /* 값이 바뀐 때만 저장(updated_at 은 비교에서 제외). 대상·위치가 아예 없으면 굳이 쓰지 않는다. */
+  const stripU = x => JSON.stringify(x && typeof x === "object" ? Object.assign({}, x, { updated_at: undefined }) : x);
+  const next = { updated_at: nowIso, shipments, vessels };
+  const emptyNext = !Object.keys(shipments).length && !Object.keys(vessels).length;
+  const emptyPrev = !Object.keys(prevShip).length && !Object.keys(prevPos).length;
+  if (!(emptyNext && emptyPrev) && stripU(prev) !== stripU(next)) await env.OQC.put("ais:traqo", JSON.stringify(next));
+  return sum;
+}
+
+/* ── 부킹 번호만으로 새 선적 만들기 (5차 지시서) ─────────────────────
+   모드 1: 부킹 하나만 받아 Traqo BL 조회 1회(무료 슬롯 1개 소모, confirm 필수)로 plan 을 만든다.
+   모드 2: followFrom 키의 기존 선적을 복사해 같은 배의 둘째 PO 선적을 만든다(Traqo 조회 없음). */
+
+/* voyage_plan_table/이벤트에서 voyage 문자열 중 처음 나온 값을 찾는다(순수 함수, 없으면 "") */
+function firstVoyageOf(data) {
+  const lists = [];
+  if (data && Array.isArray(data.voyage_plan_table)) lists.push(data.voyage_plan_table);
+  if (data && Array.isArray(data.events_table)) lists.push(data.events_table);
+  for (const list of lists) {
+    for (const item of list) {
+      const v = item && typeof item === "object" ? String(item.voyage ?? "").trim() : "";
+      if (v) return v;
+    }
+  }
+  return "";
+}
+
+/* ISO UTC → 고정 UTC 오프셋(분)의 YYYY-MM-DDTHH:MM. 해석 불가면 "". (포트클랑 UTC+8 고정용) */
+function utcToOffsetStamp(iso, offsetMinutes) {
+  const t = traqoMs(iso);
+  if (t === null) return "";
+  const d = new Date(t + offsetMinutes * 60000);
+  const z = n => String(n).padStart(2, "0");
+  return d.getUTCFullYear() + "-" + z(d.getUTCMonth() + 1) + "-" + z(d.getUTCDate()) +
+    "T" + z(d.getUTCHours()) + ":" + z(d.getUTCMinutes());
+}
+
+/* ISO UTC → 지정 IANA 타임존(DST 반영)의 YYYY-MM-DDTHH:MM. 해석 불가면 "". (시드니 AEST/AEDT용) */
+function utcToZoneStamp(iso, timeZone) {
+  const t = traqoMs(iso);
+  if (t === null) return "";
+  const f = new Intl.DateTimeFormat("en-CA", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  });
+  const p = {};
+  for (const { type, value } of f.formatToParts(new Date(t))) p[type] = value;
+  return p.year + "-" + p.month + "-" + p.day + "T" + p.hour + ":" + p.minute;
+}
+
+/* voyage_plan_table 에서 leg:"pol"/"pod" 항목을 찾는다(순수 함수, 없으면 null) */
+function traqoLeg(data, leg) {
+  const legs = Array.isArray(data && data.voyage_plan_table) ? data.voyage_plan_table : [];
+  return legs.find(l => l && typeof l === "object" && String(l.leg ?? "").trim().toUpperCase() === leg) || null;
+}
+
+/* 부킹 번호만으로 선적 만들기. 오류는 { error } 만 돌려주고(400 로 통일) 아무것도 저장하지 않는다.
+   - 공통: booking 필수(^[A-Z]{3}\d{7}$), po 규칙(parsePoInput) 공유, 같은 키 선적이 있으면 오류(Traqo 호출 안 함).
+   - 모드 1(followFrom 없음): confirm !== true 이면 "이 오류 안에서도" Traqo 를 부르지 않는다.
+     조회 오류 순서: 402 → 404 → 429 → 그 외(정상 범위 밖) → 200 인데 data 없음.
+     도착지가 시드니가 아니면 슬롯은 이미 소모됐지만 저장은 하지 않는다(다시 시도 가능).
+   - 성공: plan(ais:plans)과 정규화 기록(ais:traqo.shipments[mbl], 위치 vessels 는 건드리지 않음)을 저장한다.
+     plan 을 먼저 쓰고 traqo 저장이 실패하면 plan 을 지워서 남기지 않는다. */
+async function addAisPlan(env, body) {
+  const b = body && typeof body === "object" ? body : {};
+  /* 공통 입력 검증 */
+  const booking = String(b.booking ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{3}\d{7}$/.test(booking)) return { error: "booking must be 3 letters + 7 digits (e.g. CDB0585621)" };
+  const mbl = "ANNU" + booking;
+  let po = null;
+  if (b.po !== undefined) {
+    const pr = parsePoInput(b.po);
+    if (pr.error) return pr;
+    po = pr.po;
+  }
+  const store = await readJsonKV(env, "ais:plans", null) || { plans: {} };
+  const plans = (store.plans && typeof store.plans === "object") ? store.plans : {};
+  if (plans[mbl]) return { error: "shipment already exists: " + mbl };
+
+  const followFrom = b.followFrom === undefined ? "" : String(b.followFrom ?? "").trim().toUpperCase();
+  const target = followFrom ? plans[followFrom] : null;
+
+  /* 모드 2: 같은 배 따라가기 — Traqo 를 절대 부르지 않는다(confirm 불필요) */
+  if (followFrom) {
+    if (!target || typeof target !== "object") return { error: "followFrom target not found: " + followFrom };
+    if (target.scheduleFrom) return { error: "followFrom target already follows another shipment" };
+    const cur = { mbl, booking, traqo: false };
+    /* 일정은 resolvePlans 가 상속하지만 선박·항로 필드는 복사해서 표 필터(pod)와 선박 목록이 동작하게 한다 */
+    for (const f of ["carrier", "vessel", "voyage", "imo", "mmsi", "pol", "pod", "etd", "eta", "etb"]) {
+      if (target[f] !== undefined) cur[f] = target[f];
+    }
+    if (po !== null) cur.po = po;
+    if (b.cntrQty !== undefined && b.cntrQty !== null && b.cntrQty !== "") {
+      const n = (typeof b.cntrQty === "number" || typeof b.cntrQty === "string") ? Number(b.cntrQty) : NaN;
+      if (!Number.isInteger(n) || n < 1 || n > 99) return { error: "cntrQty must be a whole number from 1 to 99" };
+      cur.cntrQty = n;
+    }
+    cur.scheduleFrom = followFrom;
+    cur.source = "follows " + followFrom;
+    cur.updated_at = stampNow();
+    store.plans[mbl] = cur;
+    await env.OQC.put("ais:plans", JSON.stringify(store));
+    return { ok: true, mbl, plan: Object.assign({}, cur) };
+  }
+
+  /* 모드 1: Traqo 로 만들기 */
+  if (b.confirm !== true) return { error: "confirm required (uses 1 Traqo slot)" };
+  if (!env || !env.TRAQO_API_KEY) return { error: "traqo key not configured" };
+  let res = null;
+  try {
+    res = await traqoFetchJson(TRAQO_URL + "/bl/" + encodeURIComponent(booking) + "?sealine=ANNU", env.TRAQO_API_KEY);
+  } catch (_) {
+    return { error: "traqo unreachable" };   // 네트워크 오류·시간초과(abort) 포함
+  }
+  const status = res.status;
+  const data = res.body && typeof res.body === "object" ? res.body.data : null;
+  let err = null;
+  if (status === 402) err = "traqo slot limit reached";
+  else if (status === 404) err = "booking not found at Traqo";
+  else if (status === 429) err = "traqo rate limited, try later";
+  else if (!(status >= 200 && status < 300)) err = "traqo error (HTTP " + status + ")";
+  else if (!data || typeof data !== "object") err = "booking not found at Traqo";
+  if (err) return { error: err };
+
+  /* 도착지 확인: pod 항목의 port/locode 에 SYDNEY 가 있거나 locode 가 AUSYD 면 시드니 */
+  const podLeg = traqoLeg(data, "POD");
+  if (!podLeg) return { error: "destination unknown" };
+  const podPort = String(podLeg.port ?? "").trim();
+  const podKeyP = podPort.toUpperCase();
+  const podKeyL = String(podLeg.locode ?? "").trim().toUpperCase();
+  if (!(podKeyP.includes("SYDNEY") || podKeyL.includes("SYDNEY") || podKeyL === "AUSYD")) {
+    return { error: "destination is not Sydney (" + (podKeyP || podKeyL).slice(0, 40) + ")" };
+  }
+
+  const nowMsRaw = Date.parse(stampNow());
+  const nowMs = Number.isFinite(nowMsRaw) ? nowMsRaw : Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const rec = normalizeTraqo(data);
+  rec.syncedAt = nowIso;
+  rec.nextDueAt = traqoNextDue(nowMs, "ok");
+  rec.status = "ok";
+  const polLeg = traqoLeg(data, "POL");
+  const vs = rec.vessel && typeof rec.vessel === "object" ? rec.vessel : null;
+  const cur = {
+    mbl, booking,
+    carrier: "ANL",
+    vessel: vs && vs.name ? String(vs.name).toUpperCase() : "",
+    voyage: firstVoyageOf(data),
+    pol: polLeg && polLeg.port && String(polLeg.port).trim() ? String(polLeg.port).trim().toUpperCase() : "PORT KLANG",
+    pod: podKeyP || "",
+    etd: utcToOffsetStamp(rec.etdUtc ?? rec.atdUtc, 8 * 60),
+    eta: utcToZoneStamp(rec.etaUtc ?? rec.ataUtc, "Australia/Sydney"),
+    container: rec.containers.map(c => String(c.number ?? "")).join(", "),
+    source: "traqo " + nowIso.slice(0, 10),
+    traqo: true,
+    updated_at: nowIso
+  };
+  if (vs && vs.imo !== null && /^\d{7}$/.test(String(vs.imo))) cur.imo = String(vs.imo);
+  if (vs && vs.mmsi !== null && /^\d{9}$/.test(String(vs.mmsi))) cur.mmsi = String(vs.mmsi);
+  if (Number.isInteger(rec.cntrQty) && rec.cntrQty >= 1 && rec.cntrQty <= 99) cur.cntrQty = rec.cntrQty;
+  if (po !== null) cur.po = po;
+
+  store.plans[mbl] = cur;
+  const prev = await readJsonKV(env, "ais:traqo", null);
+  const prevShip = (prev && typeof prev === "object" && prev.shipments && typeof prev.shipments === "object") ? prev.shipments : {};
+  const prevVess = (prev && typeof prev === "object" && prev.vessels && typeof prev.vessels === "object") ? prev.vessels : {};
+  const next = Object.assign({}, (prev && typeof prev === "object") ? prev : {}, {
+    updated_at: nowIso,
+    shipments: Object.assign({}, prevShip, { [mbl]: rec }),
+    vessels: Object.assign({}, prevVess)   // 위치 정보는 이 함수에서 건드리지 않는다
+  });
+  try {
+    await env.OQC.put("ais:plans", JSON.stringify(store));
+    await env.OQC.put("ais:traqo", JSON.stringify(next));
+  } catch (e) {
+    /* plan 먼저 쓰고 traqo 저장이 실패하면 plan 도 지운다(남기지 않는다) */
+    try { delete store.plans[mbl]; await env.OQC.put("ais:plans", JSON.stringify(store)); } catch (_) {}
+    return { error: "tracking data save failed" };
+  }
+  return { ok: true, mbl, plan: Object.assign({}, cur), traqo: { events: rec.events.length, containers: rec.containers.length } };
+}
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -2316,8 +2956,34 @@ export default {
     const latest = await readJsonKV(env, "ais:latest", null);
     const stats = await readJsonKV(env, "ais:stats", null);
     const plans = await readJsonKV(env, "ais:plans", null);
+    const traqo = await readJsonKV(env, "ais:traqo", null);   // Traqo 동기화 결과(정규화)
     const runs = (stats && stats.runs) || [];
-    return json({ source: "ais", latest, plans: (plans && plans.plans) || {}, lastRun: runs[runs.length - 1] || null, runCount: runs.length });
+    const resolved = resolvePlans(plans || { plans: {} });   // scheduleFrom 상속 반영
+    const outPlans = (resolved && resolved.plans) || {};
+    /* plan 별 Traqo 정규화 결과(ais:traqo.shipments 는 plan 키(mbl)로 저장되어 있으므로 그대로 붙인다).
+       자기 Traqo 데이터가 있으면 그대로(3차). 없는 선적은 scheduleFrom 원본에 Traqo 데이터가 있을 때
+       일정 4필드만 담은 traqo 를 만들어 상속한다(4차) — 컨테이너·이벤트·선박 등은 선적마다 다르므로 복사하지 않는다.
+       원본 키가 없거나 원본에 데이터가 없으면 필드를 만들지 않고, 자기 참조·순환(원본이 이 선적을 다시 가리킴)은
+       무시한다(한 단계만 복사하므로 무한 루프도 없다). */
+    const tship = (traqo && traqo.shipments) || {};
+    for (const [key, plan] of Object.entries(outPlans)) {
+      if (!plan || typeof plan !== "object") continue;
+      if (tship[key]) { plan.traqo = tship[key]; continue; }
+      const sf = plan.scheduleFrom;
+      if (typeof sf !== "string" || !sf || sf === key) continue;   // 원본 키 자체가 없거나 자기 참조
+      if (!outPlans[sf] || typeof outPlans[sf] !== "object") continue;   // 원본 선적이 없으면 필드 없음
+      const srcRec = tship[sf];
+      if (!srcRec || typeof srcRec !== "object") continue;   // 원본에도 Traqo 데이터가 없으면 필드 없음
+      if (outPlans[sf].scheduleFrom === key) continue;   // 순환(A→B→A) 무시
+      plan.traqo = {
+        inherited: true, from: sf,
+        etdUtc: srcRec.etdUtc ?? null, atdUtc: srcRec.atdUtc ?? null,
+        etaUtc: srcRec.etaUtc ?? null, ataUtc: srcRec.ataUtc ?? null
+      };
+    }
+    /* latest 는 저장값(ais:latest)을 바꾸지 않고 응답을 만들 때만 Traqo 위치와 합친다 */
+    const mergedLatest = mergeVesselPositions(latest, (traqo && traqo.vessels) || null);
+    return json({ source: "ais", latest: mergedLatest, plans: outPlans, lastRun: runs[runs.length - 1] || null, runCount: runs.length });
   }
   /* 선사 일정 수동 입력 (ANL 등). MBL별로 upsert, {mbl, delete:true}면 삭제 */
   if (url.pathname === '/ais-plan' && req.method === 'POST') {
@@ -2327,6 +2993,14 @@ export default {
     const r = await saveAisPlan(env, body);
     return json(r, r.error ? 400 : 200);
   }
+  /* 부킹 번호만으로 새 선적 만들기 (인증 필요). 모드 1 = Traqo 조회 1회(confirm 필수), 모드 2 = followFrom 복사 */
+  if (url.pathname === '/ais-plan-add' && req.method === 'POST') {
+    if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+    let body;
+    try { body = await req.json(); } catch (_) { return json({ error: "invalid json" }, 400); }
+    const r = await addAisPlan(env, body);
+    return json(r, r.error ? 400 : 200);
+  }
   if (url.pathname === '/ais-stats') {
     return json(await readJsonKV(env, "ais:stats", { runs: [] }));
   }
@@ -2334,6 +3008,12 @@ export default {
     if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
     const secs = Math.min(Math.max(parseInt(url.searchParams.get('secs') || '60', 10) || 60, 5), 120);
     return json(await pollAIS(env, secs));
+  }
+  /* Traqo 수동 동기화(인증 필요). ?force=1 이면 갱신 주기를 무시(429 상태 제외) */
+  if (url.pathname === '/traqo-sync' && req.method === 'POST') {
+    if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+    const force = url.searchParams.get('force') === '1';
+    return json(await syncTraqo(env, { force }));
   }
   /* Terminal49 시험: ?mode=lines(선사 목록에서 ANNU·HMM 확인, 무료 한도 소모 없음)
      ?mode=create&mbl=...&scac=ANNU(추적 요청 생성, 무료 키 동시 10컨테이너 중 1개 사용)

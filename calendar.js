@@ -102,6 +102,72 @@ function buildCalendarItems(shipments) {
   return items;
 }
 
+/* ── [16차] 호주 선적(/ais 의 plans) → 달력 항목.
+   buildCalendarItems 가 만드는 항목과 같은 모양 + country:'AU', po 만 추가.
+   - pod 에 'SYDNEY' 가 들어 있는(대소문자 무시) 선적만, 그 외는 무시
+   - entry 가 객체가 아니거나 비어 있으면 건너뜀
+   - booking: plan.booking, 없으면 plan.mbl, 둘 다 없으면 건너뜀
+   - polDep: traqo.atdUtc(자기 것·inherited 의 것) 가 유효한 ISO 면 그 시각을
+     포트클랑 현지(UTC+8) 로 바꾼 YYYY-MM-DD, 아니면 plan.etd 앞 10자
+     (년-월-일 10자 형식일 때만), 또 없으면 null
+   - calendarEta/eta/destEta: plan.eta 앞 10자(형식 맞을 때만, 없으면 null)
+   - traqo.ataUtc 가 유효한 ISO 면(자기 것·inherited 모두) 도착 완료 → 제외
+   - polDep·calendarEta 둘 다 null 이면 제외
+   - firstSeen·변경 카운트는 null/0, alert:'ok', delayDays:null
+   - booking 오름차순 안정 정렬(예측 가능한 색 배정)
+   순수 함수(DOM 접근 없음) — Node 테스트 대상 */
+function auCalendarItems(plans) {
+  const items = [];
+  if (typeof plans !== 'object' || plans === null) return items;
+  const entries = Object.entries(plans);
+  for (const [, p] of entries) {
+    if (!p || typeof p !== 'object') continue;
+    if (Object.keys(p).length === 0) continue;
+    const pod = typeof p.pod === 'string' ? p.pod.toUpperCase() : '';
+    if (pod.indexOf('SYDNEY') === -1) continue;
+    const tq = (p.traqo && typeof p.traqo === 'object') ? p.traqo : {};
+    if (typeof tq.ataUtc === 'string' && isFinite(Date.parse(tq.ataUtc))) continue;
+    const booking = (p.booking != null && p.booking !== '') ? p.booking
+                  : (p.mbl     != null && p.mbl     !== '') ? p.mbl
+                  : null;
+    if (booking == null || booking === '') continue;
+    /* atdUtc → 포트클랑 현지(UTC+8) 날짜. Date.parse 결과에 8시간을 더해
+       UTC getter 로 읽으면 실행 환경의 시간대와 무관하게 고정된다. */
+    const atd = (typeof tq.atdUtc === 'string' && isFinite(Date.parse(tq.atdUtc)))
+      ? (() => {
+          const d = new Date(Date.parse(tq.atdUtc) + 8 * 60 * 60 * 1000);
+          return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') +
+                 '-' + String(d.getUTCDate()).padStart(2, '0');
+        })()
+      : null;
+    const polDep = atd ||
+      (typeof p.etd === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.etd) ? p.etd.slice(0, 10) : null);
+    const calEta = (typeof p.eta === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.eta))
+      ? p.eta.slice(0, 10) : null;
+    if (!polDep && !calEta) continue;
+    items.push({
+      booking:         booking,
+      vessel:          (typeof p.vessel === 'string') ? p.vessel : '',
+      voyage:          p.voyage || null,
+      polDep:          polDep,
+      firstSeenPolDep: null,
+      calendarEta:     calEta,
+      firstSeenEta:    null,
+      eta:             calEta,
+      destEta:         calEta,
+      alert:           'ok',
+      delayDays:       null,
+      etaChangeCount:    0,
+      polDepChangeCount: 0,
+      country:         'AU',
+      po:              Array.isArray(p.po) ? p.po.slice() : []
+    });
+  }
+  return items.sort(function (a, b) {
+    return a.booking < b.booking ? -1 : a.booking > b.booking ? 1 : 0;
+  });
+}
+
 /* ── 날짜별 이벤트 맵
    { "YYYY-MM-DD": [ { item, type:"ETD"|"ETA" }, ... ] } ── */
 function buildDateMap(items) {
@@ -160,6 +226,24 @@ function fmtCalHeader(year, month) {
   return months[month] + ' ' + year;
 }
 
+/* ── [16차] 칩 색: 미국은 부킹별 팔레트, 호주는 흰색 칩 + 회청 띠, 미국은 팔레트 색 + 주황 띠 ── */
+const CAL_AU_PAL = { bg:'#F4F8FA', text:'#14242E', dot:'#5A7183', stripe:'#8AA4B5' };
+const CAL_US_STRIPE = '#FF6B35';   /* 미국 칩 왼쪽 띠(지도의 미국 주황과 맞춤) */
+function calPal(item) {
+  if (item && item.country === 'AU') return CAL_AU_PAL;
+  return CAL_PALETTE[colorMap[item.booking] ?? 0];
+}
+
+/* ── [16차] 외부 데이터(선박명·항차·부킹·PO) HTML 이스케이프.
+   호주 항목에만 쓴다 — 기존 미국 항목 출력은 바이트 단위로 불변 유지. ── */
+function escCal(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /* ── 달력 셀 HTML ── */
 function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
   const holidays = (typeof getHolidays === 'function') ? getHolidays(dateStr) : [];
@@ -171,7 +255,8 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
     : '';
 
   const chipsHTML = events.map(ev => {
-    const pal     = CAL_PALETTE[colorMap[ev.item.booking] ?? 0];
+    const au    = ev.item.country === 'AU';
+    const pal     = calPal(ev.item);
     const vname   = (ev.item.vessel || ev.item.booking).slice(0, 9);
     const isFirst = ev.type === 'FIRST_ETA' || ev.type === 'FIRST_ETD';
     const firstLabel = ev.type === 'FIRST_ETD' ? 'ETD' : 'ETA';
@@ -187,10 +272,11 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
       ? ` <span class="cal-chip-chg">(${ord(ev.item.etaChangeCount)} change)</span>` : '';
     const etdChg  = ev.type === 'ETD' && ev.item.polDepChangeCount > 0
       ? ` <span class="cal-chip-chg">(${ord(ev.item.polDepChangeCount)} change)</span>` : '';
-    return `<div class="cal-chip" style="background:${pal.bg};color:${pal.text}">` +
+    return `<div class="cal-chip" style="background:${pal.bg};color:${pal.text};border-left:6px solid ${au ? CAL_AU_PAL.stripe : CAL_US_STRIPE}">` +
            `<span class="cal-chip-dot" style="background:${pal.dot}"></span>` +
            `<span class="cal-chip-type">${ev.type}</span>` +
-           `<span class="cal-chip-name">${vname}</span>${etaChg}${etdChg}</div>`;
+           (au ? `<span class="cal-chip-cty" style="font-size:9px;opacity:.7;margin-right:3px">AU</span>` : '') +
+           `<span class="cal-chip-name">${au ? escCal(vname) : vname}</span>${etaChg}${etdChg}</div>`;
   }).join('');
 
   const isSun = new Date(dateStr + 'T00:00:00').getDay() === 0;
@@ -223,7 +309,8 @@ function detailPanelHTML(dateStr, dateMap) {
 
   const rowsHTML = events.map(ev => {
     const it  = ev.item;
-    const pal = CAL_PALETTE[colorMap[it.booking] ?? 0];
+    const au  = it.country === 'AU';   /* [16차] 호주 항목 */
+    const pal = calPal(it);
     const delayHTML = typeof it.delayDays === 'number' && it.delayDays !== 0
       ? `<span class="cal-delay${it.alert === 'alert' ? ' cal-delay-alert' : ''}">` +
         (it.delayDays > 0 ? '+' : '') + it.delayDays + 'd</span>'
@@ -241,10 +328,13 @@ function detailPanelHTML(dateStr, dateMap) {
     return `<div class="cal-detail-row">` +
            `<span class="cal-detail-dot" style="background:${pal.dot}"></span>` +
            `<div class="cal-detail-body">` +
-           `<div class="cal-detail-vessel">${it.vessel || ''}` +
-           (it.voyage ? ` <span class="cal-detail-voy">${it.voyage}</span>` : '') +
+           `<div class="cal-detail-vessel">${au ? escCal(it.vessel) : (it.vessel || '')}` +
+           (it.voyage ? ` <span class="cal-detail-voy">${au ? escCal(it.voyage) : it.voyage}</span>` : '') +
+           /* [16차] 호주 항목이고 PO 가 있으면 항차 뒤에 (AU-…, AU-…) 표시 */
+           (au && Array.isArray(it.po) && it.po.length
+             ? ` <span class="cal-detail-voy">(${escCal(it.po.join(', '))})</span>` : '') +
            delayHTML + etaChangeBadge + etdChangeBadge + `</div>` +
-           `<div class="cal-detail-bkg">${it.booking}</div>` +
+           `<div class="cal-detail-bkg">${au ? escCal(it.booking) : it.booking}</div>` +
            `<div class="cal-detail-dates">` +
            (it.firstSeenPolDep
              ? `<span><span class="cal-dt-lbl">ORIG ETD</span><s>${fmtCalDate(it.firstSeenPolDep)}</s></span>`
@@ -253,7 +343,7 @@ function detailPanelHTML(dateStr, dateMap) {
            (it.firstSeenEta
              ? `<span><span class="cal-dt-lbl">ORIG ETA</span><s>${fmtCalDate(it.firstSeenEta)}</s></span>`
              : '') +
-           `<span><span class="cal-dt-lbl">ETA LA</span>${fmtCalDate(it.calendarEta)}</span>` +
+           `<span><span class="cal-dt-lbl">${au ? 'ETA SYD' : 'ETA LA'}</span>${fmtCalDate(it.calendarEta)}</span>` +
            `</div></div></div>`;
   }).join('');
 
@@ -324,7 +414,17 @@ function renderCalendar() {
 /* ── 외부에서 호출: shipments 데이터 주입 ── */
 function initCalendar(shipments) {
   calShipments = shipments || [];
-  calItems     = buildCalendarItems(calShipments);
+  /* [16차] 호주 선적 항목을 미국 항목 뒤에 이어 붙인다. 예외가 나도 호주만
+     빼고 미국 달력은 계속 그려져야 하므로 try/catch 로 감싼다. */
+  let au = [];
+  try {
+    au = auCalendarItems(
+      typeof CountryUI !== 'undefined' && CountryUI &&
+      typeof CountryUI.getPlans === 'function' ? CountryUI.getPlans() : null);
+  } catch (e) {
+    au = [];
+  }
+  calItems     = buildCalendarItems(calShipments).concat(au);
   colorMap     = buildColorMap(calItems);
   const now    = new Date();
   calYear      = now.getFullYear();
@@ -338,7 +438,21 @@ function renderCalendarTab() {
   if (typeof CUR !== 'undefined' && CUR && CUR.shipments) {
     initCalendar(CUR.shipments);
   } else {
-    const wrap = document.getElementById('calendar');
-    if (wrap) wrap.innerHTML = '<div class="cal-empty">Loading\u2026</div>';
+    /* [16차] CUR 이 없어도 호주 항목이 있으면 달력을 그린다.
+       없고 호주도 없을 때만 Loading… */
+    let au = [];
+    try {
+      au = auCalendarItems(
+        typeof CountryUI !== 'undefined' && CountryUI &&
+        typeof CountryUI.getPlans === 'function' ? CountryUI.getPlans() : null);
+    } catch (e) {
+      au = [];
+    }
+    if (au.length) {
+      initCalendar([]);
+    } else {
+      const wrap = document.getElementById('calendar');
+      if (wrap) wrap.innerHTML = '<div class="cal-empty">Loading\u2026</div>';
+    }
   }
 }

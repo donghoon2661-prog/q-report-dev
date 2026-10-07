@@ -315,9 +315,14 @@ dd .dim{opacity:.65}
 .tab:last-child{border-right:1px solid var(--line)}
 .tab.on{background:var(--hull);color:var(--paper);border-color:var(--fog)}
 
-.lane{display:flex;gap:22px;flex-wrap:wrap;padding:4px 0 18px;border-bottom:1px solid var(--line-soft);margin-bottom:22px}
-.lane div{font-family:'IBM Plex Mono';font-size:12px;color:var(--fog)}
-.lane b{display:block;font-family:'Barlow Condensed';font-size:24px;color:var(--paper)}
+.lane{display:flex;gap:15px 22px;flex-wrap:wrap;padding:4px 0 14px;border-bottom:1px solid var(--line-soft);margin-bottom:22px}
+@media(min-width:761px){
+  /* 미국·호주 두 줄의 칸 위치를 맞춘다: 6칸 격자(칸 폭 = 그 열에서 가장 넓은 값) */
+  .lane{display:grid;grid-template-columns:repeat(6,max-content);gap:15px 22px}
+  .lane > div:empty{display:none}   /* 호주 줄 앞의 줄 바꿈 요소는 격자에선 필요 없다 */
+}
+.lane div{font-family:'IBM Plex Mono';font-size:10.8px;color:var(--fog)}
+.lane b{display:block;font-family:'Barlow Condensed';font-size:20.4px;color:var(--paper)}
 
 #mapwrap{display:none;grid-template-columns:1fr 320px;gap:16px;align-items:stretch}
 @media(max-width:860px){
@@ -417,9 +422,9 @@ dd .dim{opacity:.65}
   .stamp{font-size:10px;width:100%;order:4;line-height:1.5}
   .topbar .brand{display:none}     /* 모바일에서는 로그아웃 버튼과 겹쳐서 숨긴다 */
   .topbar .spacer{display:none}
-  .lane{gap:14px}
-  .lane b{font-size:18px}
-  .lane div{font-size:11px}
+  .lane{gap:10px 14px}
+  .lane b{font-size:15.6px}
+  .lane div{font-size:10.8px}
   /* 모바일에서는 지도가 화면을 다 먹어 선박 정보를 보기 어렵다.
      지도를 낮추고, 선박을 고르면 정보가 먼저 보이도록 순서를 바꾼다. */
   #map{height:200px}

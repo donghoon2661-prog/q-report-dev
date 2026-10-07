@@ -1,0 +1,248 @@
+/* ═════════════════════════════════════════════════════════════════
+ * country-form.css — 호주 선적 등록 창 모달 스타일 (11A)
+ *
+ * - 승인 목업(ref/form-mockup.html)의 모달 스타일을 cf- 접두어로 옮긴 것.
+ *   (앱의 다른 클래스와 충돌 방지 — 앱에는 .overlay/.modal 이 이미 있음)
+ * - 색은 앱의 CSS 변수(--hull, --line, --fog, --paper, --well, --sail,
+ *   --ink, --warn, --warn-bg, --warn-line)를 쓰고 fallback 값은 목업의
+ *   :root 값. 오류(빨강)는 목업의 --red/--redbg 를 var fallback 으로 사용.
+ * - 모바일(좁은 화면)에서 1열, 가로 스크롤 없음. 라이트/다크 모두 읽힘.
+ * ═════════════════════════════════════════════════════════════════ */
+
+/* 모달이 열려 있는 동안 뒤쪽 스크롤 잠금 (앱 클래스와 겹치지 않게 cf- 접두어) */
+body.cf-modal-open { overflow: hidden; }
+
+/* hidden 속성 토글은 cf- 요소에만 적용 */
+.cf-overlay[hidden],
+.cf-modal [hidden],
+.cf-toast[hidden] { display: none !important; }
+
+/* --- 오버레이 / 모달 --- */
+.cf-overlay {
+  position: fixed; inset: 0;
+  /* 지도(Leaflet 컨트롤 z-index 1000) 위에 떠야 해서 목업의 50 대신 1100 */
+  z-index: 1100;
+  background: rgba(3, 10, 15, .64);
+  display: flex; padding: 20px 12px; overflow-y: auto;
+}
+.cf-modal {
+  width: 720px; max-width: 100%; margin: auto;
+  background: var(--hull, #0E2331);
+  border: 1px solid var(--line, #1E3A4C);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .45);
+  color: var(--paper, #DCE8EF);
+  font-family: 'IBM Plex Sans', 'Malgun Gothic', system-ui, sans-serif;
+  font-size: 13.5px; line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+.cf-modal *, .cf-toast { box-sizing: border-box; }
+.cf-modal button { font-family: inherit; }
+
+.cf-modal-head {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 16px 20px 13px; border-bottom: 1px solid var(--line, #1E3A4C);
+}
+.cf-modal-title {
+  font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  font-size: 24px; line-height: 1; letter-spacing: .04em;
+  margin: 0; text-transform: uppercase;
+  color: var(--paper, #DCE8EF);
+}
+.cf-modal-sub {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11.5px; color: var(--fog, #8AA4B5); margin: 5px 0 0;
+}
+.cf-modal-close {
+  margin-left: auto; cursor: pointer; background: none; border: none;
+  color: var(--fog, #8AA4B5); font-size: 22px; line-height: 1; padding: 2px 6px;
+}
+.cf-modal-close:hover { color: var(--paper, #DCE8EF); }
+.cf-modal-close:focus-visible {
+  outline: 2px solid var(--sail, #3FD0A6); outline-offset: 2px;
+}
+.cf-modal-alert {
+  margin: 12px 20px 0; padding: 8px 12px;
+  background: var(--redbg, #3B1A18);
+  border: 1px solid var(--red, #FF6B5E);
+  color: var(--red, #FF6B5E);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px;
+}
+.cf-modal-body { padding: 2px 20px 16px; }
+
+/* --- 구역 제목(작은 대문자) --- */
+.cf-sect { padding-top: 14px; }
+.cf-sect-title {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 12px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10px; font-weight: 400;
+  text-transform: uppercase; letter-spacing: .14em;
+  color: var(--fog, #8AA4B5);
+}
+.cf-sect-title::after {
+  content: ""; flex: 1; height: 1px;
+  background: var(--line, #1E3A4C); opacity: .5;
+}
+.cf-chip {
+  font-size: 9px; letter-spacing: .1em; padding: 1px 4px;
+  border-radius: 2px; border: 1px solid;
+}
+.cf-chip-req { color: var(--warn, #F2C14E); border-color: var(--warn, #F2C14E); }
+.cf-chip-opt { color: var(--fog, #8AA4B5); border-color: var(--line, #1E3A4C); }
+
+/* --- 입력칸 --- */
+.cf-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 13px 14px;
+}
+.cf-span2 { grid-column: 1 / -1; }
+.cf-lbl {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fog, #8AA4B5); margin-bottom: 5px;
+}
+.cf-counter {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10px; color: var(--fog, #8AA4B5); letter-spacing: .05em;
+}
+.cf-req { color: var(--warn, #F2C14E); }
+.cf-inp {
+  width: 100%; background: var(--well, #06121A);
+  border: 1px solid var(--line, #1E3A4C);
+  color: var(--paper, #DCE8EF);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12.5px; padding: 8px 10px; border-radius: 2px;
+}
+.cf-inp::placeholder { color: var(--fog, #8AA4B5); opacity: .55; }
+.cf-inp:focus { outline: none; border-color: var(--sail, #3FD0A6); }
+.cf-inp.cf-invalid {
+  border-color: var(--red, #FF6B5E);
+  background: var(--redbg, #3B1A18);
+}
+.cf-help {
+  font-size: 11.5px; color: var(--fog, #8AA4B5);
+  margin: 5px 0 0; line-height: 1.45;
+}
+.cf-err {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11.5px; color: var(--red, #FF6B5E); margin: 5px 0 0;
+}
+
+/* --- PO / CONTAINERS 반복 입력칸 --- */
+.cf-rows { display: flex; flex-direction: column; gap: 8px; }
+.cf-row { display: flex; gap: 8px; }
+.cf-row .cf-inp { flex: 1; }
+.cf-btn-x {
+  flex: none; width: 32px; padding: 8px 0; cursor: pointer;
+  background: none; border: 1px solid transparent; border-radius: 2px;
+  color: var(--fog, #8AA4B5); font-size: 14px; line-height: 1;
+}
+.cf-btn-x:hover { color: var(--red, #FF6B5E); border-color: var(--line, #1E3A4C); }
+.cf-btn-addrow {
+  margin-top: 8px; cursor: pointer;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .08em;
+  color: var(--sail, #3FD0A6); background: none;
+  border: 1px dashed var(--line, #1E3A4C);
+  padding: 6px 10px; border-radius: 2px;
+}
+.cf-btn-addrow:hover { border-color: var(--sail, #3FD0A6); }
+
+/* --- SCHEDULE 모드 스위치(라디오) --- */
+.cf-seg {
+  display: grid; grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--line, #1E3A4C);
+  border-radius: 2px; overflow: hidden;
+}
+.cf-seg-opt { position: relative; display: block; }
+.cf-seg-opt input {
+  position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer;
+}
+.cf-seg-opt span {
+  display: block; text-align: center; padding: 8px 6px; cursor: pointer;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px; color: var(--fog, #8AA4B5);
+}
+.cf-seg-opt input:checked + span {
+  background: var(--well, #06121A); color: var(--sail, #3FD0A6);
+}
+.cf-seg-opt input:focus-visible + span {
+  outline: 2px solid var(--sail, #3FD0A6); outline-offset: -2px;
+}
+
+/* --- Follow 화면 / 중복 안내 --- */
+.cf-follow-box {
+  border: 1px solid var(--line, #1E3A4C);
+  padding: 12px;
+}
+.cf-sched-preview {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12.5px; color: var(--paper, #DCE8EF);
+  background: var(--well, #06121A);
+  border: 1px solid var(--line, #1E3A4C);
+  padding: 8px 10px; margin-top: 10px;
+}
+.cf-notice-warn {
+  background: var(--warn-bg, #3A2E12);
+  border: 1px solid var(--warn-line, #5C4A1E);
+  color: var(--warn, #F2C14E);
+  font-size: 12px; padding: 8px 12px; margin: 0;
+}
+
+/* --- 모달 하단 --- */
+.cf-modal-foot {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  border-top: 1px solid var(--line, #1E3A4C);
+  padding: 14px 20px 18px;
+}
+.cf-adminkey { flex: 1 1 220px; max-width: 280px; }
+.cf-foot-actions { display: flex; gap: 10px; }
+.cf-btn {
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11.5px; letter-spacing: .08em;
+  padding: 9px 16px; border-radius: 2px;
+}
+.cf-btn-ghost {
+  background: none; border: 1px solid var(--line, #1E3A4C);
+  color: var(--paper, #DCE8EF);
+}
+.cf-btn-ghost:hover { border-color: var(--fog, #8AA4B5); }
+.cf-btn-save {
+  background: var(--sail, #3FD0A6);
+  border: 1px solid var(--sail, #3FD0A6);
+  color: var(--ink, #07141C); font-weight: 700;
+}
+.cf-btn-save:hover { opacity: .92; }
+.cf-btn-save[disabled] { opacity: .6; cursor: default; }
+.cf-btn:focus-visible {
+  outline: 2px solid var(--sail, #3FD0A6); outline-offset: 2px;
+}
+
+/* --- 토스트 --- */
+.cf-toast {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+  z-index: 1200;
+  background: var(--hull, #0E2331);
+  border: 1px solid var(--sail, #3FD0A6);
+  color: var(--paper, #DCE8EF);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px; padding: 9px 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .4);
+}
+.cf-toast.cf-show { animation: cf-toast-in .18s ease-out; }
+@keyframes cf-toast-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* --- 반응형: 좁은 화면 — 2열 → 1열, 가로 스크롤 없음 --- */
+@media (max-width: 620px) {
+  .cf-form-grid { grid-template-columns: 1fr; }
+  .cf-span2 { grid-column: auto; }
+  .cf-seg { grid-template-columns: 1fr; }
+  .cf-overlay { padding: 10px 8px; }
+  .cf-foot-actions { width: 100%; }
+  .cf-foot-actions .cf-btn { flex: 1; }
+}

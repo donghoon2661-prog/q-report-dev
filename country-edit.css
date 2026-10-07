@@ -1,0 +1,69 @@
+/* ═════════════════════════════════════════════════════════════════
+ * country-edit.css — 호주 EDIT 창의 이 창만의 조각 (15차)
+ *
+ * - 창 골격(오버레이·모달·입력칸·푸터·토스트)은 country-form.css 의 cf-* 규칙을
+ *   재사용. 확인 팝업 구조(ca-confirm/ca-card/ca-conf-*/ca-actions)는
+ *   country-add.css 와 같은 모양(id 만 ce-*) — 이 파일에 같은 규칙을 둔다
+ *   (CSS 파일 간 참조 없이 각자 완결).
+ * - 색·글꼴은 앱의 CSS 변수(+기존 fallback 값)만 — 새 색 없음.
+ *   DELETE SHIPMENT 는 기존 오류색(var(--red))의 보조로.
+ * ═════════════════════════════════════════════════════════════════ */
+
+/* ── 확인 팝업(슬롯 확인·삭제 확인이 나눠 쓴다) — country-add.css 의 ca-confirm
+   재사용 형태. id 는 ce-confirm. ── */
+.ce-confirm[hidden],
+.ca-card [hidden] { display: none !important; }
+
+.ce-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 12px;
+  background: rgba(3, 10, 15, .55);
+}
+
+/* 팝업 카드 내부(ca-card/ca-conf-title/ca-conf-body/ca-actions)는
+   country-add.css 의 같은 이름 규칙을 그대로 쓴다(클래스명이 같아 자동 적용). */
+
+/* ── TRAQO TRACKING 체크박스 줄 ── */
+.ce-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--paper, #DCE8EF);
+  cursor: pointer;
+}
+
+.ce-check input { margin: 0; }
+
+/* ── DELETE SHIPMENT: 왼쪽 아래, 빨간 보조 스타일(변수 --red 재사용) ── */
+.ce-danger {
+  background: none;
+  border: 1px solid var(--red, #FF6B5E);
+  color: var(--red, #FF6B5E);
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11.5px;
+  letter-spacing: .08em;
+  padding: 9px 16px;
+  border-radius: 2px;
+  margin-right: auto; /* 푸터 왼쪽 끝까지 붙인다(admin key·CANCEL/SAVE 와 분리) */
+}
+
+.ce-danger:hover {
+  background: var(--redbg, #3B1A18);
+}
+
+.ce-danger[disabled] {
+  opacity: .6;
+  cursor: default;
+}
+
+.ce-danger:focus-visible {
+  outline: 2px solid var(--sail, #3FD0A6);
+  outline-offset: 2px;
+}

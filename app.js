@@ -871,7 +871,7 @@ function setView(v){
   document.getElementById('beta').style.display     = v==='beta'?'block':'none';
   document.getElementById('calendar').style.display = v==='calendar'?'block':'none';
   const laneEl = document.querySelector('.lane');
-  if(laneEl) laneEl.style.display = (v==='history'||v==='system'||v==='beta'||v==='calendar') ? 'none' : 'flex';
+  if(laneEl) laneEl.style.display = (v==='history'||v==='system'||v==='beta'||v==='calendar') ? 'none' : '';
   if(v==='map'&&map) {
     setTimeout(()=>map.invalidateSize(),60);
     /* MAP 첫 진입 시 ETA 가장 빠른 vessel 자동 표시 */

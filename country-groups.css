@@ -1,0 +1,339 @@
+/* ═════════════════════════════════════════════════════════════════
+ * country-groups.css — 국가별 그룹 바 + 호주 표 스타일 (모듈 2)
+ *
+ * - 클래스는 전부 cg- 접두어.
+ * - 색은 기존 앱의 CSS 변수(--hull, --line, --fog, --paper, --hair, --well,
+ *   --sail, --buoy, --dock, --warn, --warn-bg, --warn-line)를 쓰고,
+ *   변수가 없는 환경을 위한 fallback 값을 함께 둔다.
+ * - 라이트 테마(prefers-color-scheme: light)에서는 앱이 제공하는 변수 값만
+ *   바뀌면 그대로 읽히도록 var() 만 사용한다(이 파일에서 변수를 재정의하지 않음).
+ * ═════════════════════════════════════════════════════════════════ */
+
+/* ── 필터 바 ── */
+.cg-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.cg-btn {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .06em;
+  color: var(--fog, #8AA4B5);
+  background: var(--well, #06121A);
+  border: 1px solid var(--hair, #12242F);
+  border-radius: 4px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+
+.cg-btn:hover {
+  color: var(--paper, #DCE8EF);
+  border-color: var(--line, #1E3A4C);
+}
+
+.cg-btn.on {
+  color: var(--hull, #0E2331);
+  background: var(--paper, #DCE8EF);
+  border-color: var(--paper, #DCE8EF);
+}
+
+/* ── 국가 그룹 ── */
+.cg-group { margin: 14px 0; }
+
+.cg-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.cg-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cg-group-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--paper, #DCE8EF);
+}
+
+.cg-group-route {
+  font-size: 11.5px;
+  color: var(--fog, #8AA4B5);
+}
+
+.cg-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--fog, #8AA4B5);
+}
+
+/* ── 관리자 전용(호주 그룹 제목줄, 11B): ADMIN 태그 + ADD 버튼 ──
+   기본은 숨김. html[data-cg-admin="1"] (11A 가 관리자일 때 켠다)일 때만 표시한다. */
+.cg-add,
+.cg-admin-tag {
+  display: none;
+}
+
+html[data-cg-admin="1"] .cg-add { display: inline-block; }
+html[data-cg-admin="1"] .cg-admin-tag { display: inline-block; }
+
+/* 버튼 모양: 승인 목업(ref/form-mockup.html)의 + ADD AUSTRALIA SHIPMENT 와 같은
+   작은 대문자 고정폭. 테두리 --line, 호버 --sail (11B 지시서) */
+.cg-add {
+  padding: 5px 10px;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: var(--fog, #8AA4B5);
+  background: none;
+  border: 1px solid var(--line, #1E3A4C);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+
+.cg-add:hover {
+  color: var(--sail, #3FD0A6);
+  border-color: var(--sail, #3FD0A6);
+}
+
+/* ADMIN 태그: 목업의 admin-chip 과 같은 작은 테두리 라벨 */
+.cg-admin-tag {
+  padding: 2px 5px 1px;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: .14em;
+  color: var(--dock, #F2C14E);
+  border: 1px solid var(--dock, #F2C14E);
+  border-radius: 2px;
+}
+
+.cg-card {
+  /* USA 표(#vtable) 배경과 동일하게 --hull. 테두리(--line)는 원래 같은 값이라 유지 */
+  background: var(--hull, #0E2331);
+  border: 1px solid var(--line, #1E3A4C);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+/* ── 표 (가로 스크롤 가능) ── */
+.cg-table-wrap {
+  overflow-x: auto;
+}
+
+.cg-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+/* USA 표(#vtable th)와 동일한 값: 10px, 자간 .14em, font-weight 400, 패딩 11px 16px */
+.cg-table th {
+  padding: 11px 16px;
+  font-family: 'IBM Plex Mono';
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: .14em;
+  text-align: left;
+  color: var(--fog, #8AA4B5);
+  border-bottom: 1px solid var(--line, #1E3A4C);
+}
+
+/* USA 표(#vtable td)와 동일한 값: 패딩 12px 16px, 보더 --line-soft, 13.5px */
+.cg-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft, #162C3B);
+  font-size: 13.5px;
+}
+
+.cg-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── 표 셀 클래스 (USA 표 #vtable 과 동일한 규칙·값) ── */
+.cg-table .nm {
+  font-family: 'Barlow Condensed';
+  font-size: 17px;
+  letter-spacing: .04em;
+}
+
+.cg-table .vy {
+  font-family: 'IBM Plex Mono';
+  font-size: 11px;
+  color: var(--fog, #8AA4B5);
+  margin-left: 7px;
+}
+
+.cg-table .bk {
+  display: block;
+  font-family: 'IBM Plex Mono';
+  font-size: 11px;
+  color: var(--fog, #8AA4B5);
+  margin-top: 3px;
+}
+
+.cg-table .dt {
+  font-family: 'IBM Plex Mono';
+  font-size: 12.5px;
+}
+
+.cg-table .est {
+  color: var(--fog, #8AA4B5);
+  font-size: 10px;
+  font-family: 'IBM Plex Mono';
+  margin-left: 6px;
+}
+
+/* AIS 마지막 수신 — 표 맨 아래 오른쪽 한 줄(선박별 1줄).
+   작은 회색 고정 글씨, 오른쪽 안쪽 여백은 표 셀 오른쪽 가장자리와 맞춤. */
+.cg-ais-foot {
+  margin-top: 6px;
+  padding-right: 12px;
+  text-align: right;
+  font-family: 'IBM Plex Mono';
+  font-size: 9.5px;
+  color: var(--fog, #8AA4B5);
+  opacity: .85;
+}
+
+/* VESSEL 셀 */
+.cg-vessel {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--paper, #DCE8EF);
+}
+
+.cg-voyage {
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--fog, #8AA4B5);
+}
+
+/* 작은 보조 글씨 (MBL · 컨테이너 · 1 CNTR, scheduled · 출처 등) */
+.cg-sub {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--fog, #8AA4B5);
+}
+
+/* 강조 수치 (ETD 날짜, ETB) */
+.cg-strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--paper, #DCE8EF);
+}
+
+/* AIS POSITION 셀의 "LAST DATA" 라벨 */
+.cg-cap {
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fog, #8AA4B5);
+}
+
+.cg-last {
+  margin-top: 3px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--paper, #DCE8EF);
+}
+
+/* ⚠ 출처별 상이 칩 */
+.cg-chip {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  color: var(--warn, #F2C14E);
+  background: var(--warn-bg, #3A2E12);
+  border: 1px solid var(--warn-line, #5C4A1E);
+  border-radius: 3px;
+}
+
+/* ── 빈 상태 ── */
+.cg-empty {
+  padding: 18px 16px;
+  font-size: 12.5px;
+  color: var(--fog, #8AA4B5);
+  background: var(--well, #06121A);
+  border: 1px dashed var(--line, #1E3A4C);
+  border-radius: 6px;
+}
+
+/* ── 빈 호주 그룹 (12차) ──
+   선적 0건일 때도 제목줄+ADD 버튼+빈 상태 카드를 그리지만, 그룹 전체를
+   관리자에게만 보인다. 기본은 숨김(일반 사용자 화면은 이전과 똑같이 비어 보임),
+   html[data-cg-admin="1"] (11A 가 관리자일 때 켠다)일 때만 표시한다. */
+.cg-group-empty {
+  display: none;
+}
+
+html[data-cg-admin="1"] .cg-group-empty {
+  display: block;
+}
+
+/* 관리자가 빈 그룹을 볼 때는 공개 안내(renderEmpty('au') 를 cg-empty-public 으로
+   감싼 것)를 겹치지 않게 숨긴다 */
+html[data-cg-admin="1"] .cg-empty-public {
+  display: none;
+}
+
+/* ── [15차] EDIT 버튼(RETURN 줄의 오른쪽 끝) ──
+   관리자 전용: 기본 숨김, html[data-cg-admin="1"] 일 때만 표시(ADD 버튼과 같은 방식).
+   색·글꼴은 기존 변수·클래스 규칙만 재사용(cg-add 와 같은 작은 고정폭, hover 는
+   방아쇩 계열 --warn) — 새 색·새 배지 CSS 없음(배지는 style.css 의 .ph 계열을 사용). */
+.cg-edit {
+  display: none;
+  float: right;
+  margin-left: 8px;
+  padding: 2px 7px;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  letter-spacing: .1em;
+  color: var(--fog, #8AA4B5);
+  background: none;
+  border: 1px solid var(--line, #1E3A4C);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+
+html[data-cg-admin="1"] .cg-edit { display: inline-block; }
+
+.cg-edit:hover {
+  color: var(--warn, #F2C14E);
+  border-color: var(--warn, #F2C14E);
+}
+
+/* ── 14차: 좁은 화면 — 4번째 칸(GATE IN / RETURN)이 넘치지 않게 ──
+   필요한 만큼만 추가: 칸의 최소 폭을 보장해 라벨·값이 뭉개지지 않게 하고,
+   날짜 토큰("Oct/06","20:21") 사이에서만 줄바꿈되도록 토큰 안쪽은 깨지지 않게
+   한다. 표 자체는 기존 가로 스크롤(.cg-table-wrap overflow-x:auto)을 그대로 쓴다. */
+@media (max-width: 640px) {
+  .cg-table th:nth-child(4),
+  .cg-table td:nth-child(4) {
+    min-width: 10em;
+  }
+
+  .cg-table td:nth-child(4) .dt,
+  .cg-table td:nth-child(4) .pa-na {
+    white-space: nowrap;
+  }
+}
+
+/* 4번째 칸 라벨(GATE IN / RETURN)은 7글자라 기본 28px 로는 날짜에 붙는다 */
+.cg-table td:nth-child(4) .eta-lbl {
+  min-width: 56px;
+}

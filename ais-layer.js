@@ -11,6 +11,10 @@
  * - 14차: buildModels 가 plan.traqo(계약 모양을 만족할 때만, 아니면 null)와
  *   posSource(latest.vessels[mmsi].pos.source — "aisstream"|"traqo"|없으면 null)를
  *   채운다. 툴팁의 LAST DATA 줄은 posSource가 "traqo"면 ' · via Traqo' 를 덧붙인다.
+ * - 16차: isDeparted(model, nowMs)(country-groups.js auPhase 5번과 같은 규칙)로
+ *   출항을 판정하고 groupByVessel 그룹에 departed 를 채운다. 출항 전(위치 있음)
+ *   마커는 속을 비우고(fillOpacity 0, 테두리 그대로), 툴팁 첫 줄 아래에
+ *   NOT YET DEPARTED 를 한 줄 붙인다(출항 후엔 줄 없음).
  * - 전역 노출: window.AisLayer (브라우저) / module.exports (Node)
  * - UMD. 빌드 도구·외부 라이브러리 없음. Leaflet은 create(L, map, ...)로 받는다.
  * - 좌표는 [lat, lng]. 이 모듈의 좌표는 경도가 모두 > 0 이라 wrap 불필요.
@@ -295,6 +299,7 @@
        lastDataIso 가 가장 최근인 모델의 값(못 읽는 값은 후보 제외,
        읽을 수 있는 값이 하나도 없으면 첫 번째 모델)
      - shipments 는 묶인 모델 전부(입력 순서 유지)
+     - [16차] departed: 묶인 선적 중 하나라도 isDeparted 면 true(아니면 false)
      - mbl/container/etd/etb/eta/podTerminal/source/note 는 첫 번째 선적 모델의
        값을 그룹 최상위에 복사해 기존 detailHtml 이 계속 동작하게 한다. */
   var GROUP_COPY_FIELDS = ['mbl', 'container', 'etd', 'etb', 'eta', 'podTerminal', 'source', 'note'];
@@ -318,7 +323,8 @@
       var g = byKey[key];
       if (!g) {
         g = { mmsi: null, name: '', voyage: '', lat: null, lng: null, lastDataIso: null,
-              sog: null, cog: null, distPklNm: null, destination: null, shipments: [] };
+              sog: null, cog: null, distPklNm: null, destination: null, departed: false,
+              shipments: [] };
         byKey[key] = g;
         out.push(g);
       }
@@ -335,6 +341,12 @@
       });
       var src = best || first;
       GROUP_LATEST_FIELDS.forEach(function (f) { g[f] = src[f] != null ? src[f] : null; });
+      /* [16차] 묶인 선적 중 하나라도 출항했으면 그 배는 출항(departed) */
+      g.departed = false;
+      g.shipments.forEach(function (s) {
+        if (g.departed) return;
+        if (isDeparted(s)) g.departed = true;
+      });
     });
     return out;
   }
@@ -388,6 +400,40 @@
     return { stage: 'transit', frac: rp ? rp.frac : 0 };
   }
 
+  /* ─────────────── [16차] 출항 판정(순수 함수) ─────────────── */
+
+  /* 'YYYY-MM-DD HH:MM' 또는 'YYYY-MM-DDTHH:MM'(포트클랑 현지 시각) → ms.
+     포트클랑은 UTC+8 고정(서머타임 없음, Intl 없이 계산 — 테스트 가능한 순수 계산).
+     country-groups.js 의 pkLocalMs 와 같은 계산(모듈이 분리되어 여기에도 둔다).
+     못 읽으면 null. */
+  function pkLocalMs(s) {
+    if (typeof s !== 'string') return null;
+    var m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(s.trim());
+    if (!m) return null;
+    var mo = +m[2], d = +m[3], h = m[4] != null ? +m[4] : 0, mi = m[5] != null ? +m[5] : 0;
+    if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
+    var t = Date.UTC(+m[1], mo - 1, d, h, mi) - 8 * 3600000; /* +8 → UTC */
+    return isFinite(t) ? t : null;
+  }
+
+  /* [16차] 선적 모델이 출항했는지. country-groups.js auPhase 5번과 같은 규칙:
+     - traqo.atdUtc(문자열, Date.parse 가능)가 있으면 출항(true).
+     - 아니면 수동 etd(포트클랑 현지, UTC+8)를 UTC ms 로 바꿔
+       nowMs(없으면 Date.now()) 이전(같은 시각 포함)이면 true.
+     - inherited 선적은 traqo.atdUtc/etd 에 원본에서 상속된 값이 이미 모델에
+       들어오므로 그 값을 그대로 같은 경로로 판정한다(특별 분기 없음).
+     - 입력이 이상하면(null 등) false. 예외를 던지지 않는다. */
+  function isDeparted(model, nowMs) {
+    var m = (model && typeof model === 'object') ? model : {};
+    var tq = (m.traqo && typeof m.traqo === 'object') ? m.traqo : null;
+    var atd = tq && typeof tq.atdUtc === 'string' ? tq.atdUtc : '';
+    if (atd && Date.parse(atd)) return true;
+    var etdMs = pkLocalMs(m.etd != null ? String(m.etd) : '');
+    var now = (typeof nowMs === 'number' && isFinite(nowMs)) ? nowMs : Date.now();
+    if (etdMs != null && etdMs <= now) return true;
+    return false;
+  }
+
   /* ───────────────────────── 지도 컨트롤러 ───────────────────────── */
 
   function create(L, map, opts) {
@@ -433,14 +479,22 @@
     function markerStyle(model) {
       var hasPos = model.lat != null && model.lng != null;
       var stale = ageHours(model.lastDataIso) >= STALE_HOURS;
-      /* 선박 마커: 채움 #8AA4B5 / 테두리 #DCE8EF weight 2 (두 테마 공통).
-         위치 없음 대기 마커는 기존처럼 점선 테두리·fillOpacity 0.5 */
+      /* [16차] 선박 마커: 테두리(#DCE8EF weight 2)·채움(#8AA4B5)은 그대로.
+         출항 전(위치 있음)이면 속을 비운다(fillOpacity 0, 점선 없음).
+         출항 후(위치 있음)는 기존 규칙(stale 면 0.45, 아니면 1).
+         위치 없음 대기 마커는 기존처럼 점선 테두리·fillOpacity 0.5. */
+      var fillOpacity;
+      if (hasPos) {
+        fillOpacity = model.departed === true ? (stale ? 0.45 : 1) : 0;
+      } else {
+        fillOpacity = 0.5;
+      }
       return {
         radius: 8,
         color: SHIP_STROKE,
         weight: 2,
         fillColor: SHIP_FILL,
-        fillOpacity: hasPos ? (stale ? 0.45 : 1) : 0.5,
+        fillOpacity: fillOpacity,
         dashArray: hasPos ? null : '3,3'
       };
     }
@@ -448,11 +502,14 @@
     /* 상태 단어는 쓰지 않고 시각만 표시한다.
        배 단위 그룹(11B): 선박명 항차 + (선적 둘 이상이면) N shipments + LAST DATA
        [14차] 위치 출처(posSource)가 "traqo"면 LAST DATA 줄 끝에 ' · via Traqo' 를
-       덧붙인다("aisstream" 등 그 외 출처는 변화 없다). */
+       덧붙인다("aisstream" 등 그 외 출처는 변화 없다).
+       [16차] 출항 전이면 첫 줄 아래에 NOT YET DEPARTED 를 한 줄 추가하고
+       출항 후엔 그 줄을 넣지 않는다. 기존 줄(LAST DATA 등)은 그대로. */
     function markerTooltip(group) {
       var name = esc(group.name);
       var title = group.voyage ? name + ' ' + esc(group.voyage) : name;
       var lines = [title];
+      if (!group.departed) lines.push('NOT YET DEPARTED');
       if (group.shipments && group.shipments.length > 1) {
         lines.push(group.shipments.length + ' shipments');
       }
@@ -535,6 +592,7 @@
     buildModels: buildModels,
     groupByVessel: groupByVessel,
     routeProgress: routeProgress,
-    stageOf: stageOf
+    stageOf: stageOf,
+    isDeparted: isDeparted
   };
 });

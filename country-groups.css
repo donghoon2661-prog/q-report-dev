@@ -337,3 +337,9 @@ html[data-cg-admin="1"] .cg-edit { display: inline-block; }
 .cg-table td:nth-child(4) .eta-lbl {
   min-width: 56px;
 }
+
+/* ── 16차: 지도 범례 — 호주 선박 원(속 찬 / 속 빈) ──
+   기존 .legend i 크기(9px 원)를 그대로 쓰고 배경·테두리만 정한다.
+   lg-au: 속 찬 흰 테두리 원(출항 후), lg-au.lg-hollow: 속 빈 원(출항 전). */
+.legend i.lg-au{background:#8AA4B5;box-shadow:0 0 0 1.5px #DCE8EF}
+.legend i.lg-au.lg-hollow{background:transparent}

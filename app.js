@@ -362,7 +362,10 @@ function rowsHTML(list){
     <tr data-i="${i}">
       <td><span class="nm">${s.vessel}</span><span class="vy">${s.voyage}</span>${phaseBadge(s,L2)}
           <span class="bk">${s.booking} · ${s.cntrQty||"—"} CNTR${isStaleVisible(s)?" · STALE":""}</span></td>
-      <td data-l="PKG ETD"><span class="dt">${fmtDT(s.polDep)}</span><span class="est">${actTag(!!s.polDepActual)}</span></td>
+      <td data-l="PKG GATE IN / ETD" style="white-space:nowrap">
+        <div><span class="eta-lbl">IN</span>${s.spDep?`<span class="dt">${fmtDT(s.spDep)}</span><span class="est">actual</span>`:`<span class="pa-na">—</span>`}</div>
+        <div style="margin-top:3px"><span class="eta-lbl">ETD</span><span class="dt">${fmtDT(s.polDep)}</span><span class="est">${actTag(!!s.polDepActual)}</span></div>
+      </td>
       <td data-l="SIN ETD"><span class="dt">${fmtDT(s.tsDep)}</span><span class="est">${actTag(!!s.tsDepActual)}</span></td>
       <td data-l="LA ETB / DEST ETA">
         <div><span class="eta-lbl">ETB</span><span class="dt">${fmtDT(s.eta)}</span>${gapBox(s)}<span class="est">${etaActTag}</span></div>

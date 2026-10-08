@@ -12,3 +12,9 @@
 .uim-opt.on .box::after{content:"";position:absolute;left:3px;top:0;width:4px;height:8px;border:solid var(--onsail);
   border-width:0 2px 2px 0;transform:rotate(45deg)}
 .uim-hint{width:100%;margin-top:6px;text-align:center;font-family:'IBM Plex Mono';font-size:10px;color:var(--fog);letter-spacing:.06em}
+
+/* PC 모드(폭 1100px)나 데스크톱 사이트 모드의 폰은 세로가 아주 길어 '화면 높이 100%' 메뉴 칸이 수천 px 로 늘어난다.
+   세로로 긴 화면에서는 메뉴 화면 높이를 제한한다. */
+@media (orientation: portrait) {
+  html.ui-pc #menu, html.force-cards #menu { min-height: min(100vh, 520px); }
+}

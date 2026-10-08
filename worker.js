@@ -3742,7 +3742,7 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       /* ── AIS 선박 위치 수집 (5,20,35,50분 · HMM 수집과 분리, 실패해도 영향 없음) ── */
       if (/^\s*5,20,35,50\s/.test(cron)) {
         try {
-          await pollAIS(env, 90);
+          await pollAIS(env, 780); /* 13분 청취: 정적 메시지(6분 주기) 수신 + 15분 크론 제한 여유 */
         } catch(e) {
           console.error('AIS poll error:', e.message);
         }

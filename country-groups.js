@@ -361,7 +361,8 @@
           followsText('follows <scheduleFromBooking>' 또는 빈 문자열)
      13차: cntrQty(컨테이너 대수 — plan.cntrQty 1~99 정수, 아니면 번호 개수, 없으면 null)
      14차: traqo(계약 모양 검증 통과 객체 또는 null — ais-layer.traqoOf 와 같은 규칙),
-           gateIn/ret(각 { text, est } | null — GATE IN/RETURN 칸 값). */
+           gateIn/ret(각 { text, est } | null — GATE IN/RETURN 칸 값).
+     17차: gateOut({ text, est }|null — SYDNEY GATE OUT 칸 값, ret 와 같은 방식). */
   /* 'ANNU'+영문3+숫자7 이면 뒤 10자(부킹), 아니면 '' */
   function annuBooking(v) {
     var m = /^ANNU([A-Z]{3}\d{7})$/.exec(String(v == null ? '' : v).trim().toUpperCase());
@@ -398,9 +399,12 @@
           .filter(function (s) { return s !== ''; })
         : [];
 
-      /* [14차] traqo 와 GATE IN / RETURN 칸 값 — 계약 객체 검증 후 이벤트 선택 */
+      /* [14차+17차] traqo 와 GATE IN / GATE OUT / RETURN 칸 값 — 계약 객체 검증 후
+         이벤트 선택. gateOut 은 ret(RETURN_RE, SYD_LOCODE, 가장 늦은 것)과 같은
+         pickTqEvent 방식·선택 규칙으로 GATE_OUT_RE 를 뽑는다. */
       var tq = traqoOf(plan);
       var gateIn = pickTqEvent(tq, GATE_IN_RE, PKG_LOCODE, true);
+      var gateOut = pickTqEvent(tq, GATE_OUT_RE, SYD_LOCODE, false);
       var ret = pickTqEvent(tq, RETURN_RE, SYD_LOCODE, false);
 
       rows.push({
@@ -417,6 +421,7 @@
         followsText: (scheduleInherited && scheduleFromBooking) ? 'follows ' + scheduleFromBooking : '',
         traqo: tq,
         gateIn: gateIn,
+        gateOut: gateOut,
         ret: ret,
         etd: etd,
         etb: etb,
@@ -433,18 +438,19 @@
     return rows;
   }
 
-  /* 호주 표 HTML 문자열. 4컬럼(14차 — GATE IN / RETURN 복원):
-     VESSEL | ETD · PORT KLANG | SYDNEY ETB / DEST ETA | GATE IN / RETURN
-     (AIS 수신은 표 맨 아래 오른쪽 한 줄 푸터 — .cg-ais-foot, 선박별 1줄 + [14차]
-      TRAQO 동기화 줄은 선적별 1줄씩 그 아래) */
+  /* 호주 표 HTML 문자열. 4컬럼(17차 — 미국 표와 같은 칸 구조로):
+     VESSEL | GATE IN / ETD · PKG | SYDNEY ETB / DEST ETA | SYDNEY GATE OUT / RETURN
+     (ETD 칸은 IN/ETD 두 줄 — 칸 <td> 에 white-space:nowrap, 각 줄 줄바꿈 금지.
+      4번째 칸은 OUT/RTN 두 줄. AIS 수신은 표 맨 아래 오른쪽 한 줄 푸터 — .cg-ais-foot,
+      선박별 1줄 + [14차] TRAQO 동기화 줄은 선적별 1줄씩 그 아래) */
   function renderAuTable(rows, nowMs) {
     var list = Array.isArray(rows) ? rows : [];
 
     var head = '<tr>'
       + '<th>VESSEL</th>'
-      + '<th>ETD · PORT KLANG</th>'
+      + '<th>GATE IN / ETD · PKG</th>'
       + '<th>SYDNEY ETB / DEST ETA</th>'
-      + '<th>GATE IN / RETURN</th>'
+      + '<th>SYDNEY GATE OUT / RETURN</th>'
       + '</tr>';
 
     var body = list.map(function (r) {
@@ -476,9 +482,12 @@
       if (qty != null) bkBits.push(qty + ' CNTR');
       var bk = '<span class="bk">' + (bkBits.length ? bkBits.join(' · ') : '&nbsp;') + '</span>';
 
-      /* ETD · PORT KLANG — 한 줄: dt(날짜) + est(scheduled), 값 없으면 pa-na —
-         (칩·출처 문구는 빠짐) 일정이 따라온 선적(scheduleInherited)이면
-         scheduled 뒤에 ' · follows <scheduleFromBooking>' 을 같은 est 로 덧붙인다. */
+      /* [17차] GATE IN / ETD · PKG — 정확히 두 줄(칸 <td> 에 inline
+         white-space:nowrap, 각 줄 줄바꿈 금지). 첫 줄 IN: 행 모델의
+         gateIn({ text, est }|null — 14차, 포트클랑 MYPKG 의 가장 이른 실제 Gate in),
+         없으면 pa-na —. 둘째 줄 ETD: 기존 etdCell 내용(dt + est(actual/scheduled,
+         일정이 따라온 선적(scheduleInherited)이면 ' · follows <scheduleFromBooking>'
+         병기) 또는 pa-na —). (칩·출처 문구는 빠짐) */
       var atdIso = (r.traqo && typeof r.traqo.atdUtc === 'string') ? r.traqo.atdUtc : null;
       var atdText = atdIso ? fmtLocal(atdIso, PKG_LOCODE) : null;
       var etdCell = (atdText || r.etdText)
@@ -486,6 +495,12 @@
           + (atdText ? 'actual' : 'scheduled')
           + (r.followsText ? ' · ' + esc(r.followsText) : '') + '</span>'
         : '<span class="pa-na">—</span>';
+      var inLine = '<div><span class="eta-lbl">IN</span>'
+        + (r.gateIn
+          ? '<span class="dt">' + esc(r.gateIn.text) + '</span><span class="est">' + esc(r.gateIn.est) + '</span>'
+          : '<span class="pa-na">—</span>')
+        + '</div>';
+      var etdLine = '<div style="margin-top:3px"><span class="eta-lbl">ETD</span>' + etdCell + '</div>';
 
       /* SYDNEY ETB / DEST ETA — USA 표와 같은 두 줄(div 두 개, 두 번째 줄 margin-top:3px) */
       var etbLine = '<div><span class="eta-lbl">ETB</span>'
@@ -503,21 +518,23 @@
             : '<span class="pa-na">—</span>'))
         + '</div>';
 
-      /* [14차] GATE IN / RETURN — ETB/ETA 칸과 같은 두 줄 구조·같은 클래스.
-         행 모델의 gateIn/ret({ text, est }|null) 값. 없으면 pa-na —
-         (traqo 가 없거나 inherited 이면 둘 다 — 가 된다). */
-      var gateInLine = '<div><span class="eta-lbl">GATE IN</span>'
-        + (r.gateIn
-          ? '<span class="dt">' + esc(r.gateIn.text) + '</span><span class="est">' + esc(r.gateIn.est) + '</span>'
+      /* [17차] SYDNEY GATE OUT / RETURN — ETB/ETA 칸과 같은 두 줄 구조·같은 클래스.
+         첫 줄 OUT: 행 모델의 gateOut({ text, est }|null — 17차, 도착지(AUSYD) Gate out
+         equipment 이벤트를 ret 와 같은 pickTqEvent 방식·선택 규칙(가장 늦은 것)으로 뽑은 값),
+         없으면 pa-na —(traqo 가 없거나 inherited 이면 —). 둘째 줄 RTN: 행 모델의 ret 값.
+         (옛 4번째 칸의 GATE IN 줄은 2번째 칸의 IN 줄로 옮겨갔다) */
+      var outLine = '<div><span class="eta-lbl">OUT</span>'
+        + (r.gateOut
+          ? '<span class="dt">' + esc(r.gateOut.text) + '</span><span class="est">' + esc(r.gateOut.est) + '</span>'
           : '<span class="pa-na">—</span>')
         + '</div>';
-      /* [15차] RETURN 줄 + EDIT 버튼 — 버튼은 RETURN 줄 오른쪽 끝. 표시는 CSS 관리
+      /* [15차] RTN(RETURN) 줄 + EDIT 버튼 — 버튼은 RTN 줄 오른쪽 끝. 표시는 CSS 관리
          (기본 display:none, html[data-cg-admin="1"] 일 때만 — ADD 버튼과 같은 방식,
          새 색 없음). 클릭은 country-edit.js 의 캡처 단계 위임이 받아 행 클릭(상세)
          동작과 분리된다. 키(r.mbl)는 속성값이라 esc 로 이스케이프한다. */
       var editBtn = '<button type="button" class="cg-edit" data-cg-action="edit-au"'
         + ' data-cg-key="' + esc(r.mbl) + '">EDIT</button>';
-      var retCell = '<div style="margin-top:3px"><span class="eta-lbl">RETURN</span>'
+      var retCell = '<div style="margin-top:3px"><span class="eta-lbl">RTN</span>'
         + (r.ret
           ? '<span class="dt">' + esc(r.ret.text) + '</span><span class="est">' + esc(r.ret.est) + '</span>'
           : '<span class="pa-na">—</span>')
@@ -525,9 +542,9 @@
 
       return '<tr>'
         + '<td><span class="nm">' + vesselName + '</span>' + voyage + poBit + badge + bk + '</td>'
-        + '<td>' + etdCell + '</td>'
+        + '<td style="white-space:nowrap">' + inLine + etdLine + '</td>'
         + '<td>' + etbLine + etaLine + '</td>'
-        + '<td>' + gateInLine + retCell + '</td>'
+        + '<td>' + outLine + retCell + '</td>'
         + '</tr>';
     }).join('');
 

@@ -427,7 +427,7 @@ dd .dim{opacity:.65}
   .lane div{font-size:10.8px}
   /* 모바일에서는 지도가 화면을 다 먹어 선박 정보를 보기 어렵다.
      지도를 낮추고, 선박을 고르면 정보가 먼저 보이도록 순서를 바꾼다. */
-  #map{height:200px}
+  #map{height:240px}
   #mapwrap{gap:10px;grid-template-columns:1fr!important}
   #side{padding:14px;order:-1}          /* 정보 패널을 지도 위로 */
   #side{margin-right:20px}

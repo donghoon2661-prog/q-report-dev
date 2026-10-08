@@ -1,0 +1,14 @@
+/* ===== 로그인 화면: 다크/라이트 스위치 옆 PC · MOBILE 체크 칸 ===== */
+.gate-row{display:flex;flex-wrap:wrap;gap:8px;width:100%;margin-top:6px}
+.gate-row #themesw{flex:1 1 140px;width:auto;margin-top:0}
+.uim{display:flex;gap:6px;flex:0 0 auto}
+.uim-opt{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;background:none;
+  border:1px solid var(--line);color:var(--fog);cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;letter-spacing:.1em;font-size:12px}
+.uim-opt:hover{border-color:var(--fog);color:var(--paper)}
+.uim-opt .box{position:relative;width:14px;height:14px;border:1px solid var(--line);background:var(--well);flex:none}
+.uim-opt.on{border-color:var(--sail);color:var(--paper)}
+.uim-opt.on .box{background:var(--sail);border-color:var(--sail)}
+.uim-opt.on .box::after{content:"";position:absolute;left:3px;top:0;width:4px;height:8px;border:solid var(--onsail);
+  border-width:0 2px 2px 0;transform:rotate(45deg)}
+.uim-hint{width:100%;margin-top:6px;text-align:center;font-family:'IBM Plex Mono';font-size:10px;color:var(--fog);letter-spacing:.06em}

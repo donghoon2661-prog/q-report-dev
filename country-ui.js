@@ -672,6 +672,7 @@
     mapCtl.controller = createController(mapCtl.map);
     if (mapCtl.controller && ais && typeof mapCtl.controller.update === 'function') {
       try { mapCtl.controller.update(ais); } catch (e) { /* 데이터 오류는 조용히 무시 */ }
+      try { if (typeof window !== 'undefined' && window.fitAllRoutes) window.fitAllRoutes(); } catch (e) { /* 무시 */ }
     }
   }
 
@@ -821,6 +822,7 @@
         renderAuLists();  /* 표만 갱신 — 지도 시점은 바꾸지 않는다 */
         if (mapCtl.controller && typeof mapCtl.controller.update === 'function') {
           try { mapCtl.controller.update(ais); } catch (e) { /* 무시 */ }
+          try { if (typeof window !== 'undefined' && window.fitAllRoutes) window.fitAllRoutes(); } catch (e) { /* 무시 */ }
         }
       })
       .catch(function () { /* 조용히 무시 — 콘솔 에러 없음 */ });

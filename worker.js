@@ -3015,60 +3015,6 @@ export default {
     const force = url.searchParams.get('force') === '1';
     return json(await syncTraqo(env, { force }));
   }
-  /* Terminal49 시험: ?mode=lines(선사 목록에서 ANNU·HMM 확인, 무료 한도 소모 없음)
-     ?mode=create&mbl=...&scac=ANNU(추적 요청 생성, 무료 키 동시 10컨테이너 중 1개 사용)
-     ?mode=get&id=...(추적 요청 결과 조회) */
-  if (url.pathname === '/t49-test') {
-    if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
-    if (!env.T49_API_KEY) return json({ error: "T49_API_KEY missing" }, 400);
-    const T49 = "https://api.terminal49.com/v2";
-    const h = { "Authorization": "Token " + env.T49_API_KEY, "Content-Type": "application/vnd.api+json" };
-    const mode = url.searchParams.get("mode") || "lines";
-    try {
-      if (mode === "lines") {
-        const r = await fetch(T49 + "/shipping_lines?page[size]=100", { headers: h });
-        const j = await r.json().catch(() => ({}));
-        const lines = (j.data || []).map(x => ({ scac: x.attributes && x.attributes.scac, name: x.attributes && x.attributes.name }));
-        const want = lines.filter(x => ["ANNU", "HDMU", "CMDU", "EGLV"].includes(x.scac));
-        return json({ status: r.status, total: lines.length, want, hasANL: lines.some(x => x.scac === "ANNU"), hasHMM: lines.some(x => x.scac === "HDMU") });
-      }
-      if (mode === "create") {
-        const mbl = String(url.searchParams.get("mbl") || "").trim().toUpperCase();
-        const scac = String(url.searchParams.get("scac") || "").trim().toUpperCase();
-        if (!mbl || !scac) return json({ error: "mbl and scac required" }, 400);
-        const body = { data: { type: "tracking_request", attributes: { request_type: "bill_of_lading", request_number: mbl, scac } } };
-        const r = await fetch(T49 + "/tracking_requests", { method: "POST", headers: h, body: JSON.stringify(body) });
-        return json({ status: r.status, body: await r.json().catch(() => ({})) });
-      }
-      if (mode === "shipments") {
-        /* 이미 추적 중인 선적 목록(읽기 전용, 한도 소모 없음) */
-        const r = await fetch(T49 + "/shipments?include=containers&page[size]=20", { headers: h });
-        const j = await r.json().catch(() => ({}));
-        const pick = ["bill_of_lading_number", "shipping_line_scac", "shipping_line_name", "port_of_lading_name", "pol_etd_at", "pol_atd_at", "pol_timezone",
-          "port_of_discharge_name", "pod_eta_at", "pod_ata_at", "pod_vessel_name", "pod_vessel_imo", "pod_voyage_number", "pod_terminal_name",
-          "destination_eta_at", "line_tracking_last_attempted_at", "line_tracking_last_succeeded_at", "line_tracking_stopped_at", "line_tracking_stopped_reason"];
-        const shipments = (j.data || []).map(s => {
-          const a = s.attributes || {};
-          const o = { id: s.id };
-          for (const k of pick) if (a[k] !== undefined) o[k] = a[k];
-          return o;
-        });
-        const containers = (j.included || []).filter(x => x.type === "container").map(c => {
-          const a = c.attributes || {};
-          return { number: a.number, equipment_type: a.equipment_type, pod_arrived_at: a.pod_arrived_at, pod_discharged_at: a.pod_discharged_at,
-            pol_loaded_at: a.pol_loaded_at, empty_terminated_at: a.empty_terminated_at, pickup_lfd: a.pickup_lfd };
-        });
-        return json({ status: r.status, shipments, containers, errors: j.errors || null });
-      }
-      if (mode === "get") {
-        const id = String(url.searchParams.get("id") || "").trim();
-        if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "id required" }, 400);
-        const r = await fetch(T49 + "/tracking_requests/" + id + "?include=tracked_object", { headers: h });
-        return json({ status: r.status, body: await r.json().catch(() => ({})) });
-      }
-      return json({ error: "unknown mode" }, 400);
-    } catch (e) { return json({ error: String(e.message || e) }, 500); }
-  }
   // ── END AIS ──────────────────────────────────────────────────────
 
   // ── TEST: echemi 전체 원료 접근 테스트 (임시, DEV only) ──────────

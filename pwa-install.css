@@ -1,0 +1,25 @@
+/* ===== 홈 화면 추가 버튼·안내 창(로그인 화면) ===== */
+.a2-btn{display:block;width:100%;margin-top:14px;padding:10px 12px;background:none;border:1px dashed var(--line);
+  color:var(--fog);cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.18em;font-size:12px}
+.a2-btn:hover{border-color:var(--fog);color:var(--paper)}
+.a2-sheet{position:fixed;inset:0;z-index:1200;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(0,0,0,.55);padding:0 12px 12px}
+.a2-sheet[hidden]{display:none}
+.a2-card{position:relative;width:min(420px,100%);max-height:86vh;overflow:auto;background:var(--hull);
+  border:1px solid var(--line);padding:18px 18px 16px;color:var(--paper)}
+.a2-x{position:absolute;top:6px;right:8px;width:32px;height:32px;background:none;border:0;color:var(--fog);font-size:22px;cursor:pointer}
+.a2-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.a2-head img{width:44px;height:44px;border-radius:10px}
+.a2-head b{display:block;font-family:'Barlow Condensed';font-size:18px;letter-spacing:.06em}
+.a2-head span{font-family:'IBM Plex Mono';font-size:11px;color:var(--fog)}
+.a2-tabs{display:flex;gap:8px;margin-bottom:12px}
+.a2-tab{flex:1;padding:9px 6px;background:none;border:1px solid var(--line);color:var(--fog);cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;letter-spacing:.18em;font-size:12px}
+.a2-tab.on{background:var(--sail);border-color:var(--sail);color:var(--onsail)}
+.a2-lead{margin:0 0 10px;font-size:13px;line-height:1.6}
+.a2-steps{margin:0 0 6px;padding-left:20px;font-size:13px;line-height:1.9}
+.a2-ico{display:inline-block;width:18px;height:18px;vertical-align:-4px;margin:0 2px;color:var(--sail)}
+.a2-go{display:block;width:100%;margin-top:6px;padding:12px;background:var(--sail);color:var(--onsail);border:0;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.18em}
+.a2-note{margin:8px 0 0;font-family:'IBM Plex Mono';font-size:10.5px;color:var(--fog)}
+.a2-warn{margin:0 0 10px;padding:8px 10px;border:1px solid var(--buoy);color:var(--buoy);font-size:12px;line-height:1.5}

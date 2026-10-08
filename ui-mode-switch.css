@@ -17,4 +17,5 @@
    세로로 긴 화면에서는 메뉴 화면 높이를 제한한다. */
 @media (orientation: portrait) {
   html.ui-pc #menu, html.force-cards #menu { min-height: min(100vh, 520px); }
+  html.ui-pc .tile, html.force-cards .tile { min-height: 0; }
 }

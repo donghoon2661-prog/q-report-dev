@@ -443,6 +443,13 @@
      (ETD 칸은 IN/ETD 두 줄 — 칸 <td> 에 white-space:nowrap, 각 줄 줄바꿈 금지.
       4번째 칸은 OUT/RTN 두 줄. AIS 수신은 표 맨 아래 오른쪽 한 줄 푸터 — .cg-ais-foot,
       선박별 1줄 + [14차] TRAQO 동기화 줄은 선적별 1줄씩 그 아래) */
+  /* [18차] 상태 단어(actual/scheduled)에 클래스를 붙인다 — 모바일 카드에서 A/S 배지로 바뀐다(PC 글자는 그대로) */
+  function estSpan(word) {
+    var w = String(word == null ? '' : word);
+    var cls = w === 'actual' ? 'est est-a' : (w === 'scheduled' ? 'est est-s' : 'est');
+    return '<span class="' + cls + '">' + esc(w) + '</span>';
+  }
+
   function renderAuTable(rows, nowMs) {
     var list = Array.isArray(rows) ? rows : [];
 
@@ -491,13 +498,13 @@
       var atdIso = (r.traqo && typeof r.traqo.atdUtc === 'string') ? r.traqo.atdUtc : null;
       var atdText = atdIso ? fmtLocal(atdIso, PKG_LOCODE) : null;
       var etdCell = (atdText || r.etdText)
-        ? '<span class="dt">' + esc(atdText || r.etdText) + '</span><span class="est">'
-          + (atdText ? 'actual' : 'scheduled')
-          + (r.followsText ? ' · ' + esc(r.followsText) : '') + '</span>'
+        ? '<span class="dt">' + esc(atdText || r.etdText) + '</span>'
+          + estSpan(atdText ? 'actual' : 'scheduled')
+          + (r.followsText ? '<span class="est-note"> · ' + esc(r.followsText) + '</span>' : '')
         : '<span class="pa-na">—</span>';
       var inLine = '<div><span class="eta-lbl">IN</span>'
         + (r.gateIn
-          ? '<span class="dt">' + esc(r.gateIn.text) + '</span><span class="est">' + esc(r.gateIn.est) + '</span>'
+          ? '<span class="dt">' + esc(r.gateIn.text) + '</span>' + estSpan(r.gateIn.est)
           : '<span class="pa-na">—</span>')
         + '</div>';
       var etdLine = '<div style="margin-top:3px"><span class="eta-lbl">ETD</span>' + etdCell + '</div>';
@@ -505,16 +512,16 @@
       /* SYDNEY ETB / DEST ETA — USA 표와 같은 두 줄(div 두 개, 두 번째 줄 margin-top:3px) */
       var etbLine = '<div><span class="eta-lbl">ETB</span>'
         + (r.etbText
-          ? '<span class="dt">' + esc(r.etbText) + '</span><span class="est">scheduled</span>'
+          ? '<span class="dt">' + esc(r.etbText) + '</span>' + estSpan('scheduled')
           : '<span class="pa-na">—</span>')
         + '</div>';
       var ataIso = (r.traqo && typeof r.traqo.ataUtc === 'string') ? r.traqo.ataUtc : null;
       var ataText = ataIso ? fmtLocal(ataIso, SYD_LOCODE) : null;
       var etaLine = '<div style="margin-top:3px"><span class="eta-lbl">ETA</span>'
         + (ataText
-          ? '<span class="dt">' + esc(ataText) + '</span><span class="est">actual</span>'
+          ? '<span class="dt">' + esc(ataText) + '</span>' + estSpan('actual')
           : (r.etaText
-            ? '<span class="dt">' + esc(r.etaText) + '</span><span class="est">scheduled</span>'
+            ? '<span class="dt">' + esc(r.etaText) + '</span>' + estSpan('scheduled')
             : '<span class="pa-na">—</span>'))
         + '</div>';
 
@@ -525,7 +532,7 @@
          (옛 4번째 칸의 GATE IN 줄은 2번째 칸의 IN 줄로 옮겨갔다) */
       var outLine = '<div><span class="eta-lbl">OUT</span>'
         + (r.gateOut
-          ? '<span class="dt">' + esc(r.gateOut.text) + '</span><span class="est">' + esc(r.gateOut.est) + '</span>'
+          ? '<span class="dt">' + esc(r.gateOut.text) + '</span>' + estSpan(r.gateOut.est)
           : '<span class="pa-na">—</span>')
         + '</div>';
       /* [15차] RTN(RETURN) 줄 + EDIT 버튼 — 버튼은 RTN 줄 오른쪽 끝. 표시는 CSS 관리
@@ -536,15 +543,15 @@
         + ' data-cg-key="' + esc(r.mbl) + '">EDIT</button>';
       var retCell = '<div style="margin-top:3px"><span class="eta-lbl">RTN</span>'
         + (r.ret
-          ? '<span class="dt">' + esc(r.ret.text) + '</span><span class="est">' + esc(r.ret.est) + '</span>'
+          ? '<span class="dt">' + esc(r.ret.text) + '</span>' + estSpan(r.ret.est)
           : '<span class="pa-na">—</span>')
         + editBtn + '</div>';
 
       return '<tr>'
         + '<td><span class="nm">' + vesselName + '</span>' + voyage + poBit + badge + bk + '</td>'
-        + '<td style="white-space:nowrap">' + inLine + etdLine + '</td>'
-        + '<td>' + etbLine + etaLine + '</td>'
-        + '<td>' + outLine + retCell + '</td>'
+        + '<td data-l="GATE IN / ETD · PKG" style="white-space:nowrap">' + inLine + etdLine + '</td>'
+        + '<td data-l="SYDNEY ETB / ETA">' + etbLine + etaLine + '</td>'
+        + '<td data-l="SYDNEY OUT / RTN">' + outLine + retCell + '</td>'
         + '</tr>';
     }).join('');
 

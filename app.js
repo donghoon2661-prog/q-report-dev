@@ -353,6 +353,8 @@ function gapBox(s){
 /* ---------- 표 ---------- */
 function rowsHTML(list){
   const actTag = (actual) => (actual ? "actual" : "scheduled");
+  /* 모바일 카드에서 글자 대신 A/S 배지로 보이도록 상태 클래스를 붙인다(PC는 글자 그대로) */
+  const est = (txt) => txt ? `<span class="est est-${txt === "actual" ? "a" : "s"}">${txt}</span>` : "";
   return list.map((s,i)=>{
     /* ETB는 POD 접안이 확인되면 actual (ETA/도착 완료는 하역 기준 etaActual 그대로) */
     const etaActTag  = actTag(!!s.etaActual || !!s.podBerthingActual);
@@ -362,16 +364,16 @@ function rowsHTML(list){
     <tr data-i="${i}">
       <td><span class="nm">${s.vessel}</span><span class="vy">${s.voyage}</span>${phaseBadge(s,L2)}
           <span class="bk">${s.booking} · ${s.cntrQty||"—"} CNTR${isStaleVisible(s)?" · STALE":""}</span></td>
-      <td data-l="PKG GATE IN / ETD" style="white-space:nowrap">
-        <div><span class="eta-lbl">IN</span>${s.spDep?`<span class="dt">${fmtDT(s.spDep)}</span><span class="est">actual</span>`:`<span class="pa-na">—</span>`}</div>
-        <div style="margin-top:3px"><span class="eta-lbl">ETD</span><span class="dt">${fmtDT(s.polDep)}</span><span class="est">${actTag(!!s.polDepActual)}</span></div>
+      <td data-l="GATE IN / ETD · PKG">
+        <div><span class="eta-lbl">IN</span>${s.spDep?`<span class="dt">${fmtDT(s.spDep)}</span>${est("actual")}`:`<span class="pa-na">—</span>`}</div>
+        <div style="margin-top:3px"><span class="eta-lbl">ETD</span><span class="dt">${fmtDT(s.polDep)}</span>${est(actTag(!!s.polDepActual))}</div>
       </td>
-      <td data-l="SIN ETD"><span class="dt">${fmtDT(s.tsDep)}</span><span class="est">${actTag(!!s.tsDepActual)}</span></td>
-      <td data-l="LA ETB / DEST ETA">
-        <div><span class="eta-lbl">ETB</span><span class="dt">${fmtDT(s.eta)}</span>${gapBox(s)}<span class="est">${etaActTag}</span></div>
-        ${s.destEta?`<div style="margin-top:3px"><span class="eta-lbl">ETA</span><span class="dt">${fmtDT(s.destEta)}</span><span class="est">${destActTag}</span></div>`:""}
+      <td data-l="ETD · SIN"><span class="dt">${fmtDT(s.tsDep)}</span>${est(actTag(!!s.tsDepActual))}</td>
+      <td data-l="LA ETB / ETA">
+        <div><span class="eta-lbl">ETB</span><span class="dt">${fmtDT(s.eta)}</span>${gapBox(s)}${est(etaActTag)}</div>
+        ${s.destEta?`<div style="margin-top:3px"><span class="eta-lbl">ETA</span><span class="dt">${fmtDT(s.destEta)}</span>${est(destActTag)}</div>`:""}
       </td>
-      <td class="pa-td" data-l="GATE OUT / RETURN">${postArrivalCell(s)}</td>
+      <td class="pa-td" data-l="LA OUT / RTN">${postArrivalCell(s)}</td>
     </tr>`;
   }).join("");
 }

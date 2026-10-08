@@ -1,0 +1,49 @@
+/* ── 모바일(≤760px): 선적 한 건 = 카드 한 장 (미국 표 #vtable/#otable, 호주 표 .cg-table 공통) ──
+   칸마다 data-l 제목 + 정확히 2줄. actual/scheduled 글자는 A(초록)/S(하늘색) 배지로 바꾼다.
+   PC 화면에는 영향 없음. */
+/* est 에서 분리된 'follows …' 문구 — est 와 같은 작은 회색 글씨 */
+.cg-table .est-note { color: var(--fog); font-size: 10px; font-family: 'IBM Plex Mono'; }
+@media (min-width: 761px) {
+  #vtable td:nth-child(2), #otable td:nth-child(2) { white-space: nowrap; }
+}
+@media (max-width: 760px) {
+  #vtable, #otable, .cg-table-wrap .cg-table { display: block; width: 100%; min-width: 0; border: 0; }
+  #vtable thead, #otable thead, .cg-table thead { display: none; }
+  #vtable tbody, #otable tbody, .cg-table tbody { display: block; }
+  #vtable tr, #otable tr, .cg-table tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px 12px; padding: 12px; border-bottom: 1px solid var(--line);
+  }
+  #vtable td, #otable td, .cg-table td {
+    display: block; padding: 0; border: 0; min-width: 0; white-space: nowrap; font-size: 12px;
+  }
+  #vtable td:first-child, #otable td:first-child, .cg-table td:first-child {
+    grid-column: 1 / -1; white-space: normal;
+  }
+  #vtable td:not(:first-child)::before, #otable td:not(:first-child)::before,
+  .cg-table td:not(:first-child)::before {
+    content: attr(data-l); display: block; margin-bottom: 3px;
+    font-family: 'IBM Plex Mono'; font-size: 8.5px; letter-spacing: .06em; color: var(--fog);
+  }
+  #vtable .dt, #otable .dt, .cg-table .dt { font-size: 11.5px; }
+  #vtable .eta-lbl, #otable .eta-lbl, .cg-table .eta-lbl { min-width: 27px; }
+  /* 상태 글자 → 배지 */
+  #vtable .est-a, #vtable .est-s, #otable .est-a, #otable .est-s, .cg-table .est-a, .cg-table .est-s {
+    display: inline-block; width: 13px; height: 13px; margin-left: 5px; vertical-align: 1px;
+    border-radius: 2px; font-size: 0; text-align: center; line-height: 13px;
+  }
+  #vtable .est-a::before, #otable .est-a::before, .cg-table .est-a::before,
+  #vtable .est-s::before, #otable .est-s::before, .cg-table .est-s::before {
+    font-family: 'IBM Plex Mono'; font-size: 9px; font-weight: 600;
+  }
+  #vtable .est-a::before, #otable .est-a::before, .cg-table .est-a::before { content: 'A'; }
+  #vtable .est-s::before, #otable .est-s::before, .cg-table .est-s::before { content: 'S'; }
+  #vtable .est-a, #otable .est-a, .cg-table .est-a { background: #1F7A55; color: #E6FFF4; }
+  #vtable .est-s, #otable .est-s, .cg-table .est-s { background: #4FA9D6; color: #06222F; }
+  .cg-table .est-note { display: block; margin: 0 0 0 31px; font-size: 10px; }
+  /* 반출·반납 칸: 경과 문구는 숨기고 간격 칩만 */
+  #vtable .pa-na + .pa-note, #otable .pa-na + .pa-note { display: none; }
+  #vtable .pa-span, #otable .pa-span { margin-left: 5px; min-width: 0; font-size: 10px; padding: 0 4px; }
+  #vtable .gapbox, #otable .gapbox { margin-left: 5px; }
+  .cg-table .cg-edit { margin-left: auto; }
+}

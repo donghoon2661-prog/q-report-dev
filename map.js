@@ -284,11 +284,38 @@ function getDisplayCoord(s) {
 
 /* ---------- MAP ---------- */
 let map, markers=[], tileLayer, usaGroup;
+let mapUserTouched = false;
+
+/* 모바일·카드 화면(폭 ≤900px 또는 force-cards)에서는 지도를 더 작게 축소하고, 전체 노선이 한눈에 보이게 맞춘다 */
+function isCompactMap(){
+  try{
+    if (document.documentElement.classList.contains('force-cards')) return true;
+    return !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+  }catch(_){ return false; }
+}
+/* 지도 위의 모든 노선·마커를 한 화면에 맞춘다(사용자가 지도를 만지기 전까지만, 모바일 전용) */
+window.fitAllRoutes = function(){
+  try{
+    if(!map || mapUserTouched || !isCompactMap()) return;
+    let b = null;
+    map.eachLayer(l=>{
+      if(l === tileLayer) return;
+      let lb = null;
+      if(l instanceof L.Polyline) lb = l.getBounds();
+      else if(l.getLatLng) lb = L.latLngBounds([l.getLatLng(), l.getLatLng()]);
+      if(lb && lb.isValid()) b = b ? b.extend(lb) : L.latLngBounds(lb.getSouthWest(), lb.getNorthEast());
+    });
+    if(b && b.isValid()) map.fitBounds(b.pad(0.06), {animate:false, maxZoom:4});
+  }catch(e){ /* 맞춤 실패는 무시 */ }
+};
 
 function initMap(data){
   if(map){ try{ map.remove(); }catch(_){} map = null; tileLayer = null; }
   markers = [];
-  map = L.map('map',{worldCopyJump:false,minZoom:2}).setView([25,175],3);
+  const compact = isCompactMap();
+  mapUserTouched = false;
+  map = L.map('map',{worldCopyJump:false,minZoom:compact?0:2,zoomSnap:0.25,zoomDelta:0.5}).setView([25,175],3);
+  try{ map.getContainer().addEventListener('pointerdown',()=>{ mapUserTouched = true; },{once:true}); }catch(_){}
   tileLayer = L.tileLayer(TILE[THEME],
     {attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:10}).addTo(map);
   usaGroup = L.layerGroup().addTo(map);
@@ -416,4 +443,5 @@ function initMap(data){
   const uniq = [...new Set(markers.filter(Boolean))];
   if(uniq.length) map.fitBounds(L.featureGroup(uniq).getBounds().pad(0.35));
   if (typeof window.onMapReady === 'function') { try { window.onMapReady(map, usaGroup); } catch (e) { console.error(e); } }
+  window.fitAllRoutes();
 }

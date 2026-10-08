@@ -928,3 +928,15 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
   #mapwrap>*,.tablerow>*,#cards>*{min-width:0}
   #side{height:auto;max-height:none;overflow:visible}
 }
+
+/* ── 호주 표 보조 규칙(모든 화면 폭 공통) ── */
+/* est 에서 분리된 'follows …' 문구 — est 와 같은 작은 회색 글씨 */
+.cg-table .est-note { color: var(--fog); font-size: 10px; font-family: 'IBM Plex Mono'; }
+@media (min-width: 901px) {
+  #vtable td:nth-child(2), #otable td:nth-child(2) { white-space: nowrap; }
+}
+/* 중간 폭(861px 이상): 지도 화면의 열이 넓은 호주 표(min-width 900px)에 밀려 페이지가 옆으로 넘치지 않게 */
+@media (min-width: 861px) {
+  #mapwrap { grid-template-columns: minmax(0, 1fr) 320px; }
+  #mapwrap > *, .tablerow > * { min-width: 0; }
+}

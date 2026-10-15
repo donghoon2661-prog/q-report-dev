@@ -221,6 +221,18 @@ const LEG_RE = /([A-Z][A-Z0-9 .\-]{2,28}\s\d{3,4}[NESW])\n([A-Z0-9]{2,5})\n([^\n
    (선박+항차 / 출발지 / 출발일시 / 도착지 / 도착일시) 5줄 반복 — 서비스 코드가 없다 */
 const PRELEG_RE = /([A-Z][A-Z0-9 .\-]{2,28}\s\d{3,4}[NESW])\n([^\n]+)\n(\d{4}-\d\d-\d\d \d\d:\d\d)\n([^\n]+)\n(\d{4}-\d\d-\d\d \d\d:\d\d)/g;
 
+/* 본선 미배정 판정: HMM이 피더 구간(PKG -> T/S 항)만 보여줄 때
+   마지막 구간의 POD가 환적 허브이거나, 알려진 최종 목적지와 다르면 경로가 미완성이다. */
+const TS_HUBS = ["SINGAPORE", "TANJUNG PELEPAS"];
+const portKey = s => String(s || "").toUpperCase().split(",")[0].trim();
+function isRouteIncomplete(legs, dest) {
+  if (!legs || !legs.length) return false;
+  const lastPod = portKey(legs[legs.length - 1].pod);
+  if (TS_HUBS.includes(lastPod)) return true;
+  if (dest && portKey(dest) !== lastPod) return true;
+  return false;
+}
+
 function parsePreBooking(t, bkg) {
   const em = section(t, "Estimated Movement", "Go Back|Top\\n|© 2023");
   if (!em) return null;
@@ -243,6 +255,7 @@ function parsePreBooking(t, bkg) {
                              String(qAll.reduce((a, m) => a + (+m[2] || 0), 0))] : [];
   const mother = legs[legs.length - 1];
   const feeder = legs.length > 1 ? legs[0] : null;
+  const incomplete = isRouteIncomplete(legs, null);
 
   return {
     booking: bkg,
@@ -251,18 +264,19 @@ function parsePreBooking(t, bkg) {
     feeder: feeder ? feeder.vessel + " " + (feeder.voyage || "") : null,
     feederSvc: null,
     origin: legs[0].pol, pol: legs[0].pol,
-    ts: feeder ? feeder.pod : null,
+    ts: incomplete ? mother.pod : (feeder ? feeder.pod : null),
     pod: mother.pod, dest: mother.pod,
     polDep: legs[0].etd,
-    tsArr: feeder ? feeder.eta : null,
+    tsArr: incomplete ? mother.eta : (feeder ? feeder.eta : null),
     tsDep: feeder ? mother.etd : null,
-    eta: mother.eta,
+    eta: incomplete ? null : mother.eta,
     destEta: null,
     status: "Booked — not yet shipped",
     statusLoc: legs[0].pol,
     stamp: null, eventStamp: null,
     lastEvent: null,
     last: "Booked — no movement yet",
+    legsIncomplete: incomplete,
     legs, events: [],
     containers: [], cntrQty: qty[2] ? +qty[2] : null, container: null,
     cntrType: qty[1] || null
@@ -314,6 +328,7 @@ function parseBooking(html, bkg) {
   const locs = sch ? ((sch.match(/Location\n([\s\S]*?)\nTerminal/) || [])[1] || "").split("\n").filter(Boolean) : [];
   const terms = sch ? ((sch.match(/Terminal\n([\s\S]*?)\nVessel/) || [])[1] || "").split("\n").filter(Boolean) : [];
   const destEta = schArr.length ? iso(schArr[schArr.length - 1]) : null;
+  const incomplete = isRouteIncomplete(legs, locs[locs.length - 1] || null);
 
   /* 이벤트 — 나중에 delayHistory 구간별 분해(T/S 드웰링 등)에 쓰이므로 넉넉히 보존 */
   const hb = section(t, "Hide Previous Moves|Shipment History", "Excel|Rail ETD");
@@ -344,24 +359,26 @@ function parseBooking(html, bkg) {
 
     origin: locs[0] || null,
     pol:  feeder ? feeder.pol : mother.pol,
-    ts:   feeder ? feeder.pod : null,
+    ts:   feeder ? feeder.pod : (incomplete ? mother.pod : null),
     pod:  mother.pod,
     dest: locs[locs.length - 1] || null,
     terminals: terms.length ? terms : null,
 
     polDep: feeder ? feeder.etd : mother.etd,
-    tsArr:  feeder ? (() => {
+    tsArr: feeder || incomplete ? (() => {
       /* HMM Actual 기준: Feeder Discharged at T/S Port 이벤트 날짜 우선,
-         없으면 Vessel Movement의 feeder.eta(계획값) fallback */
+         없으면 Vessel Movement의 계획값 — 피더는 feeder.eta,
+         본선 미배정 경로는 환적항 도착 예정일(mother.eta) fallback */
       const dischEv = events.find(e => {
         const st = (e.status || "").toUpperCase();
         return st.includes("DISCHARGED") && st.includes("T/S");
       });
-      return dischEv ? dischEv.at.slice(0, 10) + "T" + dischEv.at.slice(11, 16) : feeder.eta;
+      if (dischEv) return dischEv.at.slice(0, 10) + "T" + dischEv.at.slice(11, 16);
+      return incomplete ? mother.eta : feeder.eta;
     })() : null,
     tsDep:  feeder ? mother.etd : null,
-    eta:    mother.eta,
-    destEta,
+    eta:    incomplete ? null : mother.eta,
+    destEta: incomplete ? null : destEta,
 
     /* Current Location은 Shipment History보다 며칠 뒤처지는 경우가 있어
        갱신 판별에는 최신 이벤트 시각(eventStamp)을 쓴다 */
@@ -374,6 +391,7 @@ function parseBooking(html, bkg) {
             ? events[0].status + " @ " + events[0].loc + " (" + events[0].at.replace("T", " ") + ")"
             : current.status + " @ " + current.loc + " (" + current.at.replace("T", " ") + ")"),
 
+    legsIncomplete: incomplete,
     legs, events,
     containers: containers.slice(0, 20),
     cntrQty: containers.length,
@@ -1669,6 +1687,7 @@ async function collectSchedule(env, forceBkgs = null, sharedBudget = null) {
     }
     const dv = delayVsPlan(item, planEta[bkg]);
     if (dv !== null) { item.planEta = planEta[bkg]; item.delayDays = dv; }
+    if (item.legsIncomplete) { delete item.delayDays; delete item.planEta; }
     const lvl = alertLevel(dv, ro);
     if (lvl) item.alert = lvl;
 

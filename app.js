@@ -370,7 +370,9 @@ function rowsHTML(list){
       </td>
       <td data-l="ETD · SIN"><span class="dt">${fmtDT(s.tsDep)}</span>${est(actTag(!!s.tsDepActual))}</td>
       <td data-l="LA ETB / ETA">
-        <div><span class="eta-lbl">ETB</span><span class="dt">${fmtDT(s.eta)}</span>${gapBox(s)}${est(etaActTag)}</div>
+        <div><span class="eta-lbl">ETB</span>${s.legsIncomplete
+          ? `<span class="pa-na" title="HMM has not assigned the Singapore → LA mother vessel yet">Mother vessel TBA</span>`
+          : `<span class="dt">${fmtDT(s.eta)}</span>`}${gapBox(s)}${est(etaActTag)}</div>
         ${s.destEta?`<div style="margin-top:3px"><span class="eta-lbl">ETA</span><span class="dt">${fmtDT(s.destEta)}</span>${est(destActTag)}</div>`:""}
       </td>
       <td class="pa-td" data-l="LA OUT / RTN">${postArrivalCell(s)}</td>
@@ -533,7 +535,9 @@ function schTableHTML(s) {
           <td><div class="sch-na">—</div></td>
           <td>${cv(s.tsArr,"tsArr",fmtDT,"tsArrActual")}</td>
           <td>${cv(s.tsArr,"tsArr",fmtDT,"tsArrActual")}</td>
-          <td>${cv(s.eta,"eta",fmtDT,"etaActual")}</td>
+          <td>${s.legsIncomplete
+            ? `<span class="pa-na" title="HMM has not assigned the Singapore → LA mother vessel yet">Mother vessel TBA</span>`
+            : cv(s.eta,"eta",fmtDT,"etaActual")}</td>
         </tr>
         <tr>
           <td>Departure</td>
@@ -593,7 +597,9 @@ function cardHTML(s){
         <div class="f"><label>PKG ETD</label><span>${fmtDT(s.polDep)}</span></div>
         <div class="f"><label>SIN ETA</label><span>${fmtDT(s.tsArr)}</span></div>
         <div class="f"><label>SIN ETD</label><span>${fmtDT(s.tsDep)}</span></div>
-        <div class="f"><label>LA ETB</label><span>${fmtDT(s.eta)}</span></div>
+        <div class="f"><label>LA ETB</label>${s.legsIncomplete
+          ? `<span class="pa-na" title="HMM has not assigned the Singapore → LA mother vessel yet">Mother vessel TBA</span>`
+          : `<span>${fmtDT(s.eta)}</span>`}</div>
         <div class="f"><label>SERVICE</label><span class="${svcDisplay(s).cls}">${svcDisplay(s).text}</span></div>
         <div class="f"><label>FEEDER</label><span>${s.feeder||"— (direct)"}</span></div>
         <div class="f"><label>CNTR</label><span>${s.cntrQty||"—"}</span></div>

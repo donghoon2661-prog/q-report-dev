@@ -2986,32 +2986,19 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
   /* ── COA 원문 PDF (QUALITY 백데이터 창) ───────────────────────────
-     GET /coa-pdf?sheet=<data/coa 파일 이름(확장자 제외)> → PDF 만 내려준다.
-     pCloud 폴더 링크(인보이스 등 다른 파일이 같이 있음)는 브라우저에 보이지 않게,
-     KV "coa:pdf" = { "<sheet>": { code, fileid, name } } (공개 저장소·백업에 없음)에서 찾아 워커가 대신 받는다. */
+     GET /coa-pdf?sheet=<data/coa 파일 이름(확장자 제외)> → KV "coa:file:<sheet>" 의 PDF 만 내려준다.
+     PDF 는 tools/coa 처리기가 미리 올린다. pCloud 폴더 링크(인보이스 등 다른 파일이 같이 있음)는 쓰지 않고,
+     pCloud 다운로드 주소는 요청 IP 에 묶여(410) 워커에서 그때그때 받을 수 없다. KV 백업(/backup) 목록에는 넣지 않는다. */
   if (url.pathname === '/coa-pdf' && req.method === 'GET') {
     const sheet = String(url.searchParams.get('sheet') || '');
     if (!/^[A-Za-z0-9_\-]{3,80}$/.test(sheet)) return json({ error: "bad sheet" }, 400);
-    const map = await readJsonKV(env, "coa:pdf", {});
-    const ent = map && map[sheet];
-    if (!ent || !/^[A-Za-z0-9]+$/.test(String(ent.code || "")) || !/^\d+$/.test(String(ent.fileid || ""))) {
-      return json({ error: "COA PDF not registered" }, 404);
-    }
-    try {
-      const lr = await fetch("https://api.pcloud.com/getpublinkdownload?code=" + ent.code + "&fileid=" + ent.fileid);
-      const lj = await lr.json();
-      if (lj.result !== 0 || !Array.isArray(lj.hosts) || !lj.hosts.length || !lj.path) return json({ error: "COA PDF unavailable" }, 502);
-      const fr = await fetch("https://" + lj.hosts[0] + lj.path);
-      if (!fr.ok || !fr.body) return json({ error: "COA PDF download failed" }, 502);
-      const fname = sheet.replace(/[^A-Za-z0-9_\-]/g, "_") + ".pdf";
-      return new Response(fr.body, { status: 200, headers: {
-        ...CORS, "Content-Type": "application/pdf",
-        "Content-Disposition": 'inline; filename="' + fname + '"',
-        "Cache-Control": "private, max-age=3600",
-        "X-Content-Type-Options": "nosniff" } });
-    } catch (_) {
-      return json({ error: "COA PDF fetch error" }, 502);
-    }
+    const pdf = await env.OQC.get("coa:file:" + sheet, "arrayBuffer");
+    if (!pdf) return json({ error: "COA PDF not registered" }, 404);
+    return new Response(pdf, { status: 200, headers: {
+      ...CORS, "Content-Type": "application/pdf",
+      "Content-Disposition": 'inline; filename="' + sheet + '.pdf"',
+      "Cache-Control": "private, max-age=3600",
+      "X-Content-Type-Options": "nosniff" } });
   }
 
   // ── AIS 조회(읽기 전용) / 수동 수집(인증) ───────────────────────────

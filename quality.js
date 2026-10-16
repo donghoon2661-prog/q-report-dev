@@ -4,7 +4,7 @@
    이 파일(로직)은 건드릴 필요 없음.
    ───────────────────────────────────────────────────────────────────────── */
 
-/* ── 스펙 상수 (v10.8) ── */
+/* ── 스펙 상수 (v10.12) ── */
 const WSPEC = {'Small':[80,90],'Medium':[90,100],'Large':[101,111],'Extra Large':[111,121]};
 const ITEMS = [
   {id:'leak', name:'Leaking', dir:'hi', s1:15, s2:12, key:'leak', unit:'개/사이즈', specTxt:'사이즈당 Max 14'},
@@ -17,7 +17,7 @@ const ITEMS = [
   {id:'powder', name:'Powder', dir:'hi', s1:1.5, s2:1.2, s1incl:true, key:'powder', unit:'', specTxt:'Max 1.50'},
   {id:'len', name:'Length Min', dir:'lo', s1:240, s2:243, key:'len_min', unit:'mm', specTxt:'≥ 240'},
   {id:'cuff', name:'Thk Cuff Min', dir:'lo', s1:0.05, s2:null, key:'cuff_min', unit:'mm', specTxt:'≥ 0.05 · 근접밴드 없음', specTxt_en:'≥ 0.05 · no near-limit band'},
-  {id:'palm', name:'Thk Palm Min', dir:'lo', s1:0.05, s2:0.06, key:'palm_min', unit:'mm', specTxt:'≥ 0.06 (S2 근접) / 0.05 미만 S1', specTxt_en:'≥ 0.06 (S2 near) / <0.05 S1'},
+  {id:'palm', name:'Thk Palm Min', dir:'lo', s1:0.05, s2:null, key:'palm_min', unit:'mm', specTxt:'≥ 0.05 · 근접밴드 없음', specTxt_en:'≥ 0.05 · no near-limit band'},
   {id:'fin', name:'Thk Finger Min', dir:'lo', s1:0.08, s2:null, key:'fin_min', unit:'mm', specTxt:'≥ 0.08 · 근접밴드 없음', specTxt_en:'≥ 0.08 · no near-limit band'},
   {id:'width', name:'Width 경계 여유', name_en:'Width Boundary Margin', dir:'lo', s1:0, s2:1, key:null, unit:'mm', specTxt:'사이즈별 ±5, 0 = 스펙 경계', specTxt_en:'±5 per size, 0 = spec boundary', margin:true},
 ];
@@ -31,38 +31,38 @@ let DATA = { sheets: [], detections: [] };
 let LANG = 'en';
 const I18N = {
   ko:{
-    title:'품질 관제 대시보드', subtitle:'COA 검사 기준 v10.8 (실스펙·사이즈별)',
+    title:'품질 관제 대시보드', subtitle:'COA 검사 기준 v10.12 (실스펙·사이즈별)',
     detPanel:'워크시트별 DETECTION', detHint:'건수 클릭 → 상세',
     chartPanel:'스펙 관제 — Lot별 최악값 vs 허용 한계',
     datePanel:'제조일자 → 워크시트 → 백데이터',
     lot:'Lot', sector:'섹터', s1off:'S1 Off-spec', s2near:'S2 근접',
-    resolvedTag:'해소됨', noDetect:'신 기준(v10.8) 탐지 없음 — 전 항목 스펙 이내',
+    resolvedTag:'해소됨', noDetect:'신 기준(v10.12) 탐지 없음 — 전 항목 스펙 이내',
     resolvedReasonPrefix:'해소 사유', resolvedDatePrefix:'해소일', resolvedReasonTypo:'오타 정정',
     off:'Off-spec 한계 (S1)', near:'근접 밴드 경계 (S2)', worstByLot:'Lot 최악값',
     mfgMonth:'제조월', sheetCount:'워크시트', clickForFiles:'개 · 클릭하여 파일 목록',
-    openBackdata:'→ 백데이터 열기', sectors_:'섹터', cellHighlight:'셀 강조 = v10.8 기준 Off-spec(적) / 근접(황)',
+    openBackdata:'→ 백데이터 열기', sectors_:'섹터', cellHighlight:'셀 강조 = v10.12 기준 Off-spec(적) / 근접(황)',
     latestLot:'최신 Lot', marginToLimit:'허용 한계까지 여유', allTimeWorst:'전체 기간 최악값', status:'판정 상태',
     statusOff:'OFF-SPEC', statusNear:'근접', statusOk:'정상',
     mfgDate:'제조일', pages:'Pages', itemHeader:'항목',
-    legendPrefix:'강조:', legendOff:'적색 = Off-spec(S1)', legendNear:'황색 = 근접 밴드(S2)', legendNote:'검사 기준 v10.8 (Thickness는 근접 밴드 없음)',
+    legendPrefix:'강조:', legendOff:'적색 = Off-spec(S1)', legendNear:'황색 = 근접 밴드(S2)', legendNote:'검사 기준 v10.12 (Thickness는 근접 밴드 없음)',
     unmapped:'미상', cell:'셀',
     tabDet:'탐지', tabChart:'스펙 차트', tabDate:'제조일자',
   },
   en:{
-    title:'Quality Monitoring Dashboard', subtitle:'COA inspection criteria v10.8 (actual spec, per size)',
+    title:'Quality Monitoring Dashboard', subtitle:'COA inspection criteria v10.12 (actual spec, per size)',
     detPanel:'DETECTION by Worksheet', detHint:'Click count → details',
     chartPanel:'Spec Monitoring — Worst value per Lot vs Limit',
     datePanel:'Mfg Date → Worksheet → Backdata',
     lot:'Lot', sector:'Sectors', s1off:'S1 Off-spec', s2near:'S2 Near-limit',
-    resolvedTag:'Resolved', noDetect:'No detections under v10.8 criteria — all items within spec',
+    resolvedTag:'Resolved', noDetect:'No detections under v10.12 criteria — all items within spec',
     resolvedReasonPrefix:'Resolved reason', resolvedDatePrefix:'Resolved on', resolvedReasonTypo:'Typo correction',
     off:'Off-spec limit (S1)', near:'Near-limit boundary (S2)', worstByLot:'Worst value by Lot',
     mfgMonth:'Mfg month', sheetCount:'worksheet(s)', clickForFiles:' · click for file list',
-    openBackdata:'→ Open backdata', sectors_:'sectors', cellHighlight:'Highlighted cells = v10.8 Off-spec (red) / Near-limit (yellow)',
+    openBackdata:'→ Open backdata', sectors_:'sectors', cellHighlight:'Highlighted cells = v10.12 Off-spec (red) / Near-limit (yellow)',
     latestLot:'Latest Lot', marginToLimit:'Margin to limit', allTimeWorst:'All-time worst', status:'Status',
     statusOff:'OFF-SPEC', statusNear:'Near-limit', statusOk:'Normal',
     mfgDate:'Mfg date', pages:'Pages', itemHeader:'Item',
-    legendPrefix:'Legend:', legendOff:'Red = Off-spec (S1)', legendNear:'Yellow = Near-limit band (S2)', legendNote:'Criteria v10.8 (Thickness has no near-limit band)',
+    legendPrefix:'Legend:', legendOff:'Red = Off-spec (S1)', legendNear:'Yellow = Near-limit band (S2)', legendNote:'Criteria v10.12 (Thickness has no near-limit band)',
     unmapped:'Unknown', cell:'Cell',
     tabDet:'Detect', tabChart:'Spec Chart', tabDate:'Mfg Date',
   }
@@ -453,7 +453,7 @@ function buildQuality(){
     if(k==='powder') return v>1.5?'viol':v>=1.2?'near':'';
     if(k==='len_min') return v<240?'viol':v<243?'near':'';
     if(k==='cuff_min') return Math.round((v-0.05)*1e6)<0?'viol':'';
-    if(k==='palm_min') return Math.round((v-0.05)*1e6)<0?'viol':Math.round((v-0.06)*1e6)<0?'near':'';
+    if(k==='palm_min') return Math.round((v-0.05)*1e6)<0?'viol':'';
     if(k==='fin_min') return Math.round((v-0.08)*1e6)<0?'viol':'';
     if(k==='w_min'||k==='w_med'){const b=WSPEC[sz];if(!b)return '';return (v<b[0]||v>b[1])?'viol':(v<=b[0]+1||v>=b[1]-1)?'near':'';}
     return '';

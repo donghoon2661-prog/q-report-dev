@@ -47,7 +47,7 @@ const I18N = {
     legendPrefix:'강조:', legendOff:'적색 = Off-spec(S1)', legendNear:'황색 = 근접 밴드(S2)', legendNote:'검사 기준 v10.12 (Thickness는 근접 밴드 없음)',
     unmapped:'미상', cell:'셀',
     tabDet:'탐지', tabChart:'스펙 차트', tabDate:'제조일자',
-    coaLink:'COA 원문 보기 (pCloud) ↗',
+    coaLink:'COA 원문 PDF 보기 ↗',
   },
   en:{
     title:'Quality Monitoring Dashboard', subtitle:'COA inspection criteria v10.12 (actual spec, per size)',
@@ -66,7 +66,7 @@ const I18N = {
     legendPrefix:'Legend:', legendOff:'Red = Off-spec (S1)', legendNear:'Yellow = Near-limit band (S2)', legendNote:'Criteria v10.12 (Thickness has no near-limit band)',
     unmapped:'Unknown', cell:'Cell',
     tabDet:'Detect', tabChart:'Spec Chart', tabDate:'Mfg Date',
-    coaLink:'Open original COA (pCloud) ↗',
+    coaLink:'Open original COA PDF ↗',
   }
 };
 function t(key){ return I18N[LANG][key]; }
@@ -87,7 +87,7 @@ async function loadCOA(){
     const r = await fetch(COA_DIR + e.file, {cache:'no-store'});
     if(!r.ok) throw new Error(e.file + ' ' + r.status);
     const j = await r.json();
-    return { name: j.name || e.name, sectors: j.sectors || [], detections: j.detections || [], link: e.link || null };
+    return { name: j.name || e.name, sectors: j.sectors || [], detections: j.detections || [], file: e.file, pdf: !!e.pdf };
   }));
   const files = [];
   results.forEach((res, i) => {
@@ -99,7 +99,7 @@ async function loadCOA(){
   });
   if(!files.length) throw new Error('All COA files failed to load');
   return {
-    sheets: files.map(f => ({ name: f.name, sectors: f.sectors, link: f.link })),
+    sheets: files.map(f => ({ name: f.name, sectors: f.sectors, file: f.file, pdf: f.pdf })),
     detections: files.flatMap(f => f.detections.map(d => normalizeDet(d, f.name)))
   };
 }
@@ -494,10 +494,11 @@ function buildQuality(){
       });
     });
     h+='</table><div class="legend-bd">'+t('legendPrefix')+' <i class="r">'+t('legendOff')+'</i> · <i class="y">'+t('legendNear')+'</i> — '+t('legendNote')+'</div>';
-    /* COA 원문(pCloud 폴더) 링크 — 오른쪽 맨 아래. index.json 의 link (pCloud 공개 링크만 허용) */
-    if(sheet.link && /^https:\/\/u\.pcloud\.link\/publink\/show\?code=[A-Za-z0-9]+$/.test(sheet.link)){
+    /* COA 원문 PDF 링크 — 오른쪽 맨 아래. 워커 /coa-pdf 가 PDF 만 내려준다(pCloud 주소는 화면·저장소에 두지 않음) */
+    const stem = String(sheet.file||'').replace(/\.json$/,'');
+    if(sheet.pdf && /^[A-Za-z0-9_\-]{3,80}$/.test(stem) && typeof API_ROOT!=='undefined'){
       h+='<div class="coa-link-row" style="display:flex;justify-content:flex-end;margin-top:10px">'+
-         '<a class="coa-link" href="'+sheet.link+'" target="_blank" rel="noopener noreferrer" '+
+         '<a class="coa-link" href="'+API_ROOT+'/coa-pdf?sheet='+encodeURIComponent(stem)+'" target="_blank" rel="noopener noreferrer" '+
          'style="font-family:var(--mono);font-size:11.5px;color:var(--blue,#4DA3FF);border:1px solid var(--blue,#4DA3FF);'+
          'border-radius:14px;padding:5px 12px;text-decoration:none;white-space:nowrap">'+t('coaLink')+'</a></div>';
     }

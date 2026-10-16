@@ -2965,6 +2965,21 @@ async function addAisPlan(env, body) {
   }
   return { ok: true, mbl, plan: Object.assign({}, cur), traqo: { events: rec.events.length, containers: rec.containers.length } };
 }
+
+/* /ais 응답용: Traqo 도착 예정(etaUtc)이 있으면 plan.eta 를 그 값(시드니 현지 YYYY-MM-DDTHH:MM)으로 바꾼다.
+   저장값(ais:plans)은 바꾸지 않는다. 처음 등록할 때의 값은 etaPlan 으로 남긴다(값이 다를 때만).
+   plan.traqo 는 자기 것이든 상속(inherited)이든 같은 etaUtc 필드를 쓴다. Traqo 가 없는 선적(수동 입력)은 그대로. */
+function applyTraqoEta(plans) {
+  for (const plan of Object.values(plans || {})) {
+    if (!plan || typeof plan !== "object") continue;
+    const tq = plan.traqo && typeof plan.traqo === "object" ? plan.traqo : null;
+    const eta = tq ? utcToZoneStamp(tq.etaUtc, "Australia/Sydney") : "";
+    if (!eta || eta === plan.eta) continue;
+    plan.etaPlan = plan.eta ?? null;
+    plan.eta = eta;
+  }
+  return plans;
+}
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -3000,6 +3015,7 @@ export default {
         etaUtc: srcRec.etaUtc ?? null, ataUtc: srcRec.ataUtc ?? null
       };
     }
+    applyTraqoEta(outPlans);   // Traqo 도착 예정이 바뀌었으면 표시용 eta 도 따라간다
     /* latest 는 저장값(ais:latest)을 바꾸지 않고 응답을 만들 때만 Traqo 위치와 합친다 */
     const mergedLatest = mergeVesselPositions(latest, (traqo && traqo.vessels) || null);
     return json({ source: "ais", latest: mergedLatest, plans: outPlans, lastRun: runs[runs.length - 1] || null, runCount: runs.length });

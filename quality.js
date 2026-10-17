@@ -499,14 +499,12 @@ function buildQuality(){
     const sizes=Object.keys(sec.rows);
     let h='<div class="meta-row"><span>'+t('lot')+' <b>'+sec.lot+'</b></span><span>'+t('mfgDate')+' <b>'+(sec.mfg||'—')+'</b></span><span>'+t('pages')+' <b>'+sec.pages+'</b></span></div>';
     h+='<table class="bd"><tr><th>'+t('itemHeader')+'</th>'+sizes.map(s=>'<th>'+s+'</th>').join('')+'</tr>';
+    /* 새 PSR 양식(phys_mixed)의 물성 12줄은 사이즈 구분 없이 장갑 13개를 잰 값이라 칸을 합친다 — coa-table.js.
+       13 = 추출기(coa_extract.py)가 정확히 13행을 읽었을 때만 phys_mixed 를 붙인다 */
+    const mixed=!!sec.phys_mixed;
     GROUPS.forEach(g=>{
-      h+='<tr><td class="grp" colspan="'+(sizes.length+1)+'">'+g[0][LANG]+'</td></tr>';
-      g[1].forEach(col=>{
-        h+='<tr><td>'+col[1]+'</td>'+sizes.map(sz=>{
-          const v=sec.rows[sz][col[0]];
-          return '<td class="'+cellClass(col[0],v,sz)+'">'+(v==null?'—':v)+'</td>';
-        }).join('')+'</tr>';
-      });
+      h+='<tr><td class="grp" colspan="'+(sizes.length+1)+'">'+CoaTable.groupTitle(g[0][LANG],g[1].map(c=>c[0]),mixed,13,LANG)+'</td></tr>';
+      g[1].forEach(col=>{ h+=CoaTable.rowHtml(col[0],col[1],sizes,sec.rows,mixed,cellClass); });
     });
     h+='</table><div class="legend-bd">'+t('legendPrefix')+' <i class="r">'+t('legendOff')+'</i> · <i class="y">'+t('legendNear')+'</i> — '+t('legendNote')+'</div>';
     /* COA 원문 PDF 링크 — 오른쪽 맨 아래. 워커 /coa-pdf 가 PDF 만 내려준다(pCloud 주소는 화면·저장소에 두지 않음) */

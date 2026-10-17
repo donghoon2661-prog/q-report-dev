@@ -21,6 +21,21 @@ const ITEMS = [
   {id:'fin', name:'Thk Finger Min', dir:'lo', s1:0.08, s2:null, key:'fin_min', unit:'mm', specTxt:'≥ 0.08 · 근접밴드 없음', specTxt_en:'≥ 0.08 · no near-limit band'},
   {id:'width', name:'Width 경계 여유', name_en:'Width Boundary Margin', dir:'lo', s1:0, s2:1, key:null, unit:'mm', specTxt:'사이즈별 ±5, 0 = 스펙 경계', specTxt_en:'±5 per size, 0 = spec boundary', margin:true},
 ];
+/* COA 원문 쪽 뷰어(PC 전용) — coa-panel.js. 모바일(≤900px)은 기존 'Open original COA PDF' 버튼만 쓴다 */
+let coaPanel = null;
+function coaPanelShow(stem, pages){
+  if(typeof CoaPanel==='undefined' || typeof API_ROOT==='undefined') return;
+  if(!coaPanel) coaPanel = CoaPanel.create({
+    modalBody: document.getElementById('mBody'), apiRoot: API_ROOT,
+    isDesktop: ()=>!window.matchMedia('(max-width:900px)').matches,
+    msgs: LANG==='en'
+      ? {loading:'Loading COA pages…', error:'Could not load the COA PDF.', noPages:'These pages are not in the PDF.', open:'Open in new tab ↗'}
+      : {loading:'성적서 쪽을 불러오는 중…', error:'성적서 PDF를 불러오지 못했습니다.', noPages:'PDF에 해당 쪽이 없습니다.', open:'새 탭에서 열기 ↗'}
+  });
+  coaPanel.showSector(stem, pages);
+}
+function coaPanelClose(){ if(coaPanel) coaPanel.close(); }
+
 function itemName(it){ return LANG==='en' && it.name_en ? it.name_en : it.name; }
 function itemSpecTxt(it){ return LANG==='en' && it.specTxt_en ? it.specTxt_en : it.specTxt; }
 
@@ -423,15 +438,15 @@ function buildQuality(){
   window.__qBound = true;
   if(firstBind){
   document.getElementById('mClose').addEventListener('click',()=>{
-    overlay.classList.remove('show');
+    overlay.classList.remove('show'); coaPanelClose();
     document.body.classList.remove('modal-open');
   });
   overlay.addEventListener('click',e=>{if(e.target===overlay){
-    overlay.classList.remove('show');
+    overlay.classList.remove('show'); coaPanelClose();
     document.body.classList.remove('modal-open');
   }});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){
-    overlay.classList.remove('show');
+    overlay.classList.remove('show'); coaPanelClose();
     document.body.classList.remove('modal-open');
   }});
   }
@@ -503,6 +518,7 @@ function buildQuality(){
          'border-radius:14px;padding:5px 12px;text-decoration:none;white-space:nowrap">'+t('coaLink')+'</a></div>';
     }
     document.getElementById('mBody').innerHTML=h;
+    coaPanelShow(sheet.pdf ? stem : null, sec.pages);
   }
 
   /* ── 모바일 탭 전환 ── */

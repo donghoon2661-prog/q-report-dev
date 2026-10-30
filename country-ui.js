@@ -889,6 +889,8 @@
         return res.json();
       })
       .then(function (json) {
+        var CG0 = getCountryGroups();
+        if (CG0 && typeof CG0.applyTracker === 'function') { try { CG0.applyTracker(json); } catch (e) { /* 원본 그대로 */ } }
         ais = json;
         renderAuLists();  /* 표만 갱신 — 지도 시점은 바꾸지 않는다 */
         if (mapCtl.controller && typeof mapCtl.controller.update === 'function') {

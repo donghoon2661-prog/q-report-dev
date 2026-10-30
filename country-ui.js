@@ -823,6 +823,14 @@
     if (typeof setView === 'function') {
       try { setView('map'); } catch (e) { /* 무시 */ }
     }
+    /* 상세(#side)는 지도 옆(폰은 지도 위)에 있어 표에서 누르면 바뀐 게 안 보인다 -> 상세로 화면을 옮긴다 */
+    var side = byId('side');
+    if (side && typeof side.getBoundingClientRect === 'function') {
+      var r = side.getBoundingClientRect();
+      if (r.top < 0 || r.top > (window.innerHeight || 0) * 0.6) {
+        try { side.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* 무시 */ }
+      }
+    }
     if (isNum(model.lat) && isNum(model.lng) && mapCtl.map &&
         typeof mapCtl.map.panTo === 'function') {
       try { mapCtl.map.panTo([model.lat, model.lng]); } catch (e) { /* 무시 */ }

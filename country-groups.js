@@ -755,6 +755,19 @@
      Gate in·선적·출항은 그 컨테이너의 폰 실제값 → 없으면 그 선적 Traqo 실제값 → 계획값.
      다른 선적에서 물려받은(inherited) 출항 실제값은 버리고, 계획 ETD·ETA 만 남긴다.
      GET /ais 응답을 받자마자 한 번 부른다(응답 객체를 직접 고침). */
+  /* UTC ISO → 'YYYY-MM-DDTHH:MM' (그 항구 현지 시각). 시간대를 모르면 null */
+  function fmtIsoLocal(iso, locode) {
+    var t = Date.parse(iso), tz = TZ_BY_LOCODE[locode];
+    if (!isFinite(t) || !tz || typeof Intl === 'undefined') return null;
+    try {
+      var p = {};
+      new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t))
+        .forEach(function (x) { p[x.type] = x.value; });
+      return p.year + '-' + p.month + '-' + p.day + 'T' + p.hour + ':' + p.minute;
+    } catch (e) { return null; }
+  }
+
   function applyTracker(aisJson) {
     var plans = aisJson && aisJson.plans && typeof aisJson.plans === 'object' ? aisJson.plans : {};
     Object.keys(plans).forEach(function (k) {
@@ -789,8 +802,15 @@
       t.atdUtc = atd || (own.atdUtc || null);
       if (!t.atdUtc) t.etdUtc = (dep[0] && dep[0].date) || own.etdUtc || old.etdUtc || null;
       t.ataUtc = pick('ARRI', true, true) || own.ataUtc || null;
-      t.etaUtc = pick('ARRI', false, true) || own.etaUtc || old.etaUtc || null;
+      var trkEta = pick('ARRI', false, true);
+      t.etaUtc = trkEta || own.etaUtc || old.etaUtc || null;
       plan.traqo = t;
+      /* 표의 ETA 칸은 plan.eta(시드니 현지)를 쓰므로 폰 ETA 로 바꾼다. 일정이 자기 값이 되면 follows 표시는 뺀다. */
+      if (trkEta) {
+        var loc = fmtIsoLocal(trkEta, SYD_LOCODE);
+        if (loc) plan.eta = loc;
+      }
+      if (atd || trkEta) { plan.scheduleInherited = false; plan.scheduleFrom = null; plan.scheduleFromBooking = null; }
     });
     return aisJson;
   }

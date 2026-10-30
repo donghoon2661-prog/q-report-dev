@@ -759,6 +759,49 @@
     var side = byId('side');
     if (!side) return;
     side.innerHTML = detailHtml(model);
+    renderAuPhotos(side, model);
+  }
+
+  /* 해외 컨테이너 사진 (S4, 10-30). 부킹 폴더 링크는 미국과 같은 /po photos(부킹 키, 엑셀 동기화가 넣음).
+     부킹 폴더의 하위 폴더(PO 이름, 예: AU_1924661260)를 칸으로 보여 주고, 누르면 po.js 갤러리로 연다.
+     하위 폴더가 없으면 칸을 만들지 않는다(누를 수 없는 칸을 두지 않음). */
+  function renderAuPhotos(side, model) {
+    if (typeof PHOTOS === 'undefined' || typeof pcList !== 'function' || typeof renderGallery !== 'function') return;
+    var m = model || {};
+    var list = Array.isArray(m.shipments) ? m.shipments : [m];
+    var wrap = document.createElement('div');
+    wrap.className = 'au-photos';
+    side.appendChild(wrap);
+    var norm = function (s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    list.forEach(function (s) {
+      var code = s && s.booking ? PHOTOS[s.booking] : null;
+      if (!code) return;
+      var box = document.createElement('div');
+      box.className = 'au-ph';
+      box.innerHTML = '<div class="gal-title">' + esc(s.booking) + ' · photos</div><div class="pogrid"></div><div class="galbox"></div>';
+      wrap.appendChild(box);
+      var grid = box.querySelector('.pogrid'), gal = box.querySelector('.galbox');
+      var pos = Array.isArray(s.po) ? s.po : (s.po ? String(s.po).split(',') : []);
+      pcList(code).then(function (root) {
+        var folders = (root.folders || []).filter(function (f) { return !/^COA/i.test(f.name); });
+        if (!folders.length) { grid.outerHTML = '<div class="gal-title dim">No container photo folders</div>'; return; }
+        folders.forEach(function (f) {
+          var po = pos.filter(function (p) { return norm(p) && norm(f.name).indexOf(norm(p)) >= 0; })[0];
+          var cell = document.createElement('div');
+          cell.className = 'pocell has-photo';
+          cell.title = 'Click to view photos — ' + f.name;
+          cell.innerHTML = '<span class="po">' + esc(po || f.name) + '</span>'
+            + (s.container && folders.length === 1 ? '<span class="cn">' + esc(s.container) + '</span>' : '');
+          cell.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            wrap.querySelectorAll('.pocell').forEach(function (c) { c.classList.remove('sel'); });
+            cell.classList.add('sel');
+            renderGallery(gal, po || f.name, code, f.name);
+          });
+          grid.appendChild(cell);
+        });
+      }).catch(function (e) { grid.outerHTML = '<div class="gal-title warn">photos unavailable — ' + esc(e.message || e) + '</div>'; });
+    });
   }
 
   /* 호주 표 행 클릭 → 같은 순서(인덱스)의 auRows 행을 찾고,

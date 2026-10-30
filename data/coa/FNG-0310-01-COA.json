@@ -5,6 +5,8 @@
       "lot": "126050001",
       "mfg": "2026-05-01",
       "pages": "1~7",
+      "po": "FNG-0310-01",
+      "booking": "KULM20914600",
       "excluded": [
         {
           "size": "Large",

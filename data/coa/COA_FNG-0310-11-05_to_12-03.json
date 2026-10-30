@@ -5,6 +5,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "1~10",
+      "po": "FNG-0310-11-5",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -137,6 +139,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "11~20",
+      "po": "FNG-0310-11-6",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -269,6 +273,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "21~30",
+      "po": "FNG-0310-11-7",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -401,6 +407,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "31~40",
+      "po": "FNG-0310-11-8",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -533,6 +541,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "41~50",
+      "po": "FNG-0310-11-9",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -665,6 +675,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "51~60",
+      "po": "FNG-0310-11-10",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -797,6 +809,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "61~70",
+      "po": "FNG-0310-11-11",
+      "booking": "KULM94487200",
       "excluded": [
         {
           "size": "Large",
@@ -936,6 +950,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "71~80",
+      "po": "FNG-0310-11-12",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -1068,6 +1084,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "81~90",
+      "po": "FNG-0310-11-13",
+      "booking": "KULM94487200",
       "excluded": [
         {
           "size": "Large",
@@ -1207,6 +1225,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "91~100",
+      "po": "FNG-0310-11-14",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -1339,6 +1359,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "101~110",
+      "po": "FNG-0310-11-15",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -1471,6 +1493,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "111~120",
+      "po": "FNG-0310-12-1",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -1603,6 +1627,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "121~130",
+      "po": "FNG-0310-12-2",
+      "booking": "KULM94487200",
       "phys_mixed": true,
       "rows": {
         "Small": {
@@ -1735,6 +1761,8 @@
       "lot": "126080002",
       "mfg": "2026-08-01",
       "pages": "131~140",
+      "po": "FNG-0310-12-3",
+      "booking": "KULM94487200",
       "excluded": [
         {
           "size": "Large",

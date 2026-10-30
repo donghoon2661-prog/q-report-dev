@@ -42,6 +42,30 @@ function itemSpecTxt(it){ return LANG==='en' && it.specTxt_en ? it.specTxt_en : 
 const COA_DIR = 'data/coa/';
 let DATA = { sheets: [], detections: [] };
 
+/* ── SHIPMENT ↔ QUALITY 연결 (2026-10-30) ──
+   섹터의 po(성적서 `FNG-0310-14-2`)와 SHIPMENT PO 칸(`FNG031014 (Container 2 of 15)`)을 같은 키로 맞춘다. */
+function poKey(v){
+  const s = String(v||'').toUpperCase();
+  let m = s.match(/^(FNG)-(\d{4})-(\d{2})(?:-(\d{1,2}))?$/);
+  if(m) return m[1]+m[2]+m[3] + (m[4] ? '-'+(+m[4]) : '');
+  m = s.match(/^([A-Z]+\d+)\s*\(\s*CONTAINER\s*(\d+)\s*OF\s*(\d+)\s*\)/);
+  if(m) return +m[3] === 1 ? m[1] : m[1]+'-'+(+m[2]);
+  return null;
+}
+/* PO 칸 글자 -> {sheet, idx, grade}. grade = 그 섹터의 해소 안 된 탐지 중 가장 높은 등급(A>B>C), 없으면 null */
+function coaSectorOf(poText){
+  const k = poKey(poText);
+  if(!k) return null;
+  for(const sh of DATA.sheets){
+    const idx = sh.sectors.findIndex(x=>poKey(x.po)===k);
+    if(idx < 0) continue;
+    const pages = sh.sectors[idx].pages;
+    const g = DATA.detections.filter(d=>d.sheet===sh.name && d.pages===pages && !d.resolved).map(d=>d.grade).sort()[0] || null;
+    return { sheet: sh.name, idx, grade: g };
+  }
+  return null;
+}
+
 /* ── i18n ── UI 라벨만 관리. detection의 note/why는 파일 자체의 note_en/why_en을 사용 */
 let LANG = 'en';
 const I18N = {
@@ -63,6 +87,7 @@ const I18N = {
     unmapped:'미상', cell:'셀',
     tabDet:'탐지', tabChart:'스펙 차트', tabDate:'제조일자',
     coaLink:'COA 원문 PDF 보기 ↗',
+    po:'PO', booking:'부킹', toShipment:'선적 보기 →', delivered:'도착 완료(HISTORY)',
   },
   en:{
     title:'Quality Monitoring Dashboard', subtitle:'COA inspection criteria v10.12 (actual spec, per size)',
@@ -82,6 +107,7 @@ const I18N = {
     unmapped:'Unknown', cell:'Cell',
     tabDet:'Detect', tabChart:'Spec Chart', tabDate:'Mfg Date',
     coaLink:'Open original COA PDF ↗',
+    po:'PO', booking:'Booking', toShipment:'View shipment →', delivered:'Delivered (HISTORY)',
   }
 };
 function t(key){ return I18N[LANG][key]; }
@@ -475,29 +501,59 @@ function buildQuality(){
     if(k==='w_min'||k==='w_med'){const b=WSPEC[sz];if(!b)return '';return (v<b[0]||v>b[1])?'viol':(v<=b[0]+1||v>=b[1]-1)?'near':'';}
     return '';
   }
-  function openBackdata(name){
+  function openBackdata(name, start){
     const sheet=DATA.sheets.find(s=>s.name===name);
+    start = (start>=0 && start<sheet.sectors.length) ? start : 0;
     document.getElementById('mTitle').textContent=name;
     document.getElementById('mSub').textContent=t('sectors_')+' '+sheet.sectors.length+' · '+t('cellHighlight');
     const tabs=document.getElementById('mTabs'); tabs.innerHTML='';
     sheet.sectors.forEach((sec,i)=>{
-      const b=document.createElement('button'); b.className='stab'+(i===0?' on':'');
-      b.textContent='#'+(i+1)+' · Lot '+sec.lot+' · p.'+sec.pages;
+      const b=document.createElement('button'); b.className='stab'+(i===start?' on':'');
+      b.textContent='#'+(i+1)+' · Lot '+sec.lot+' · p.'+sec.pages+(sec.po?' · '+sec.po.replace(/^FNG-\d{4}-/,''):'');
       b.addEventListener('click',()=>{
         tabs.querySelectorAll('.stab').forEach(x=>x.classList.remove('on'));
         b.classList.add('on'); renderSector(sheet,i);
       });
       tabs.appendChild(b);
     });
-    renderSector(sheet,0);
+    renderSector(sheet,start);
     overlay.classList.add('show');
     document.body.classList.add('modal-open');
     document.getElementById('mBody').scrollTop = 0;
+    const on = tabs.querySelector('.stab.on');
+    if(on && start) on.scrollIntoView({block:'nearest', inline:'center'});
+  }
+  /* SHIPMENT PO 칸의 COA 표시에서 부른다: 그 섹터의 백데이터를 바로 연다 */
+  window.openCoaSector = (name, idx) => openBackdata(name, idx);
+  function closeBackdata(){
+    overlay.classList.remove('show'); coaPanelClose();
+    document.body.classList.remove('modal-open');
+  }
+  /* 섹터 -> SHIPMENT: 진행 중 부킹이면 그 행을 펼치고 그 컨테이너 칸을 고른다 */
+  function goShipment(booking, po){
+    const list = (typeof CUR!=='undefined' && CUR && CUR.shipments) || [];
+    const i = list.findIndex(s=>s.booking===booking);
+    if(i<0) return;
+    closeBackdata();
+    show('ship');
+    if(typeof closePO==='function') closePO();   // 이미 펼쳐져 있으면 행 클릭이 접기가 되므로 먼저 닫는다
+    const tr = document.querySelector('#vtbody tr[data-i="'+i+'"]');
+    if(tr) tr.click(); else if(typeof showPO==='function') showPO(list[i], i);
+    setTimeout(()=>{
+      const cell = document.querySelector('#popanel .pocell[data-pokey="'+poKey(po)+'"]');
+      if(cell){ cell.click(); cell.scrollIntoView({block:'center', behavior:'smooth'}); }
+    }, 350);
   }
   function renderSector(sheet,idx){
     const sec=sheet.sectors[idx];
     const sizes=Object.keys(sec.rows);
-    let h='<div class="meta-row"><span>'+t('lot')+' <b>'+sec.lot+'</b></span><span>'+t('mfgDate')+' <b>'+(sec.mfg||'—')+'</b></span><span>'+t('pages')+' <b>'+sec.pages+'</b></span></div>';
+    const live = sec.booking && typeof CUR!=='undefined' && CUR && (CUR.shipments||[]).some(s=>s.booking===sec.booking);
+    const shipLink = !sec.booking ? '' :
+      '<span>'+t('booking')+' <b>'+sec.booking+'</b> '+(live
+        ? '<a href="#" class="q2ship" style="color:var(--blue,#4DA3FF);text-decoration:none">'+t('toShipment')+'</a>'
+        : '<i style="color:var(--muted);font-style:normal">'+t('delivered')+'</i>')+'</span>';
+    let h='<div class="meta-row"><span>'+t('lot')+' <b>'+sec.lot+'</b></span><span>'+t('mfgDate')+' <b>'+(sec.mfg||'—')+'</b></span><span>'+t('pages')+' <b>'+sec.pages+'</b></span>'+
+      (sec.po ? '<span>'+t('po')+' <b>'+sec.po+'</b></span>' : '')+shipLink+'</div>';
     h+='<table class="bd"><tr><th>'+t('itemHeader')+'</th>'+sizes.map(s=>'<th>'+s+'</th>').join('')+'</tr>';
     /* 새 PSR 양식(phys_mixed)의 물성 12줄은 사이즈 구분 없이 장갑 13개를 잰 값이라 칸을 합친다 — coa-table.js.
        13 = 추출기(coa_extract.py)가 정확히 13행을 읽었을 때만 phys_mixed 를 붙인다 */
@@ -516,6 +572,8 @@ function buildQuality(){
          'border-radius:14px;padding:5px 12px;text-decoration:none;white-space:nowrap">'+t('coaLink')+'</a></div>';
     }
     document.getElementById('mBody').innerHTML=h;
+    const q2s = document.querySelector('#mBody .q2ship');
+    if(q2s) q2s.addEventListener('click', e=>{ e.preventDefault(); goShipment(sec.booking, sec.po); });
     coaPanelShow(sheet.pdf ? stem : null, sec.pages);
   }
 

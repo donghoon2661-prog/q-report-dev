@@ -389,11 +389,18 @@ function showPO(s,i){
       if(!v){ out += `<div class="pocell empty">—</div>`; continue; }
       const m = v.match(/^(\S+)\s*\(Container\s*(\d+)\s*of\s*(\d+)\)/i);
       const fn = poFolderName(v);
-      const attr = fn ? ` data-folder="${fn}" data-k="${k}" title="Click to view photos — ${fn}"` : "";
+      const pk = typeof poKey==="function" ? poKey(v) : null;
+      const attr = (fn ? ` data-folder="${fn}" data-k="${k}" title="Click to view photos — ${fn}"` : "")
+                 + (pk ? ` data-pokey="${pk}"` : "");
       const cls = fn ? "pocell has-photo" : "pocell";
+      /* 그 컨테이너 COA 섹터로 가는 표시(QUALITY 를 볼 수 있을 때만). 점 색 = 해소 안 된 탐지의 최고 등급 */
+      const coa = (typeof coaSectorOf==="function" && typeof ACCESS_ROLE!=="undefined" && ACCESS_ROLE!=="eta") ? coaSectorOf(v) : null;
+      // 등급(색·A/B/C)은 관리자만 본다. 다른 계정은 "COA"만.
+      const coaAdmin = ACCESS_ROLE==="admin";
+      const coaBtn = coa ? `<button class="pocoa${coaAdmin?" g"+(coa.grade||"0"):""}" data-sheet="${coa.sheet}" data-idx="${coa.idx}" title="Open COA backdata">COA${coaAdmin&&coa.grade?" "+coa.grade:""}</button>` : "";
       out += m
-        ? `<div class="${cls}"${attr}><span class="po">${m[1]}</span><span class="cn">${m[2]} / ${m[3]}</span></div>`
-        : `<div class="${cls}"${attr}><span class="po">${v}</span></div>`;
+        ? `<div class="${cls}"${attr}><span class="po">${m[1]}</span><span class="cn">${m[2]} / ${m[3]}</span>${coaBtn}</div>`
+        : `<div class="${cls}"${attr}><span class="po">${v}</span>${coaBtn}</div>`;
     }
     cells = `<div class="pogrid">${out}</div>
       <div class="polegend">
@@ -423,6 +430,12 @@ function showPO(s,i){
   p.hidden=false;
   placePO(p,i);
   document.getElementById('poclose').addEventListener('click',e=>{e.stopPropagation();closePO();});
+  /* PO 칸의 COA 버튼 -> QUALITY 그 섹터 백데이터 (사진 열기와 겹치지 않게 전파를 막는다) */
+  p.querySelectorAll(".pocoa").forEach(b=>b.addEventListener("click", ev=>{
+    ev.stopPropagation();
+    show("quality");
+    if(typeof window.openCoaSector==="function") window.openCoaSector(b.dataset.sheet, +b.dataset.idx);
+  }));
   const gw = document.getElementById("galwrap");
   const code = PHOTOS[s.booking] || null;
   if(gw){

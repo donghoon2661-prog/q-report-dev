@@ -516,6 +516,12 @@ dd .dim{opacity:.65}
 .pocell .po{color:#7FD8FF;display:block;font-weight:600;letter-spacing:.02em}
 .pocell .cn{color:var(--dock);display:block;font-size:9.5px}
 .pocell.empty{border-style:dashed;color:#3E586A}
+/* PO 칸 → QUALITY 섹터 버튼. 색 = 해소 안 된 탐지의 최고 등급(없으면 초록) */
+.pocoa{margin-top:4px;font-family:'IBM Plex Mono';font-size:9px;letter-spacing:.06em;padding:1px 6px;
+  border:1px solid currentColor;border-radius:8px;background:transparent;cursor:pointer;line-height:1.5;color:#9AA4B2}
+.pocoa.g0{color:#43C98B}.pocoa.gA{color:#FF6D5E}.pocoa.gB{color:#F5B84F}.pocoa.gC{color:#58B8FF}
+.pocoa:hover{background:rgba(255,255,255,.06)}
+#qview .meta-row{flex-wrap:wrap;row-gap:6px}
 .poeta{font-family:'IBM Plex Mono';font-size:10.5px;color:var(--fog);margin:-8px 0 12px;
   display:flex;flex-direction:column;gap:3px}
 .poeta s{opacity:.6}

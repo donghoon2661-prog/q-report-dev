@@ -751,9 +751,54 @@
     return renderGroup('au', 0, card, '', 'cg-group-empty');
   }
 
+  /* [S5, 10-30] 폰 tracker 컨테이너별 실제 이벤트(plan.tracker[컨테이너])를 그 선적의 traqo 에 합친다.
+     Gate in·선적·출항은 그 컨테이너의 폰 실제값 → 없으면 그 선적 Traqo 실제값 → 계획값.
+     다른 선적에서 물려받은(inherited) 출항 실제값은 버리고, 계획 ETD·ETA 만 남긴다.
+     GET /ais 응답을 받자마자 한 번 부른다(응답 객체를 직접 고침). */
+  function applyTracker(aisJson) {
+    var plans = aisJson && aisJson.plans && typeof aisJson.plans === 'object' ? aisJson.plans : {};
+    Object.keys(plans).forEach(function (k) {
+      var plan = plans[k];
+      if (!plan || !plan.tracker || typeof plan.tracker !== 'object') return;
+      var cs = Object.keys(plan.tracker);
+      var evs = [];
+      cs.forEach(function (c) {
+        var r = plan.tracker[c];
+        (r && Array.isArray(r.events) ? r.events : []).forEach(function (e) {
+          if (e && typeof e.date === 'string') evs.push(Object.assign({ container: c }, e));
+        });
+      });
+      if (!evs.length) return;
+      var old = plan.traqo && typeof plan.traqo === 'object' ? plan.traqo : {};
+      var own = old.inherited === true ? {} : old;
+      var t = Object.assign({}, own, { enabled: true, status: 'ok', inherited: false, tracker: true });
+      t.events = (Array.isArray(own.events) ? own.events : [])
+        .filter(function (e) { return !e || cs.indexOf(String(e.container || '').toUpperCase()) < 0; })
+        .concat(evs);
+      var pick = function (code, actual, latest) {
+        var best = null;
+        evs.forEach(function (e) {
+          if (e.code !== code || (actual && e.isActual !== true)) return;
+          var x = Date.parse(e.date);
+          if (isFinite(x) && (!best || (latest ? x > best.x : x < best.x))) best = { x: x, d: e.date };
+        });
+        return best ? best.d : null;
+      };
+      var dep = evs.filter(function (e) { return e.code === 'DEPA' && e.locode === PKG_LOCODE; });
+      var atd = dep.filter(function (e) { return e.isActual === true; }).map(function (e) { return e.date; }).sort()[0] || null;
+      t.atdUtc = atd || (own.atdUtc || null);
+      if (!t.atdUtc) t.etdUtc = (dep[0] && dep[0].date) || own.etdUtc || old.etdUtc || null;
+      t.ataUtc = pick('ARRI', true, true) || own.ataUtc || null;
+      t.etaUtc = pick('ARRI', false, true) || own.etaUtc || old.etaUtc || null;
+      plan.traqo = t;
+    });
+    return aisJson;
+  }
+
   /* ───────────────────────── 공개 API ───────────────────────── */
 
   return {
+    applyTracker: applyTracker,
     COUNTRIES: COUNTRIES,
     visible: visible,
     renderBar: renderBar,

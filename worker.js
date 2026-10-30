@@ -3033,10 +3033,48 @@ export default {
         etaUtc: srcRec.etaUtc ?? null, ataUtc: srcRec.ataUtc ?? null
       };
     }
+    /* 폰 tracker 컨테이너별 실제 이벤트(S5, ais:tracker)를 plan 의 컨테이너마다 붙인다.
+       다른 선적 값은 물려주지 않는다(같은 배라도 Gate in·선적·출항은 컨테이너마다 다름). */
+    const trk = await readJsonKV(env, "ais:tracker", null);
+    const tcon = (trk && trk.containers) || {};
+    for (const plan of Object.values(outPlans)) {
+      if (!plan || typeof plan !== "object") continue;
+      const cs = String(plan.container || "").split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
+      const got = {};
+      for (const c of cs) if (tcon[c]) got[c] = tcon[c];
+      if (Object.keys(got).length) plan.tracker = got;
+    }
     applyTraqoEta(outPlans);   // Traqo 도착 예정이 바뀌었으면 표시용 eta 도 따라간다
     /* latest 는 저장값(ais:latest)을 바꾸지 않고 응답을 만들 때만 Traqo 위치와 합친다 */
     const mergedLatest = mergeVesselPositions(latest, (traqo && traqo.vessels) || null);
     return json({ source: "ais", latest: mergedLatest, plans: outPlans, lastRun: runs[runs.length - 1] || null, runCount: runs.length });
+  }
+  /* 폰 tracker 결과 올리기(S5). 헤더 X-Tracker-Key. body {containers:[{container, carrier, events[], syncedAt}]}
+     컨테이너별로 덮어쓴다. 이벤트는 {date(UTC ISO), code, kind, description, locode, isActual} 만 남긴다. */
+  if (url.pathname === '/tracker' && req.method === 'POST') {
+    if (!env.TRACKER_KEY || req.headers.get("X-Tracker-Key") !== env.TRACKER_KEY) return json({ error: "Authentication failed" }, 401);
+    let body;
+    try { body = await req.json(); } catch (_) { return json({ error: "invalid json" }, 400); }
+    const list = Array.isArray(body && body.containers) ? body.containers : null;
+    if (!list || list.length > 200) return json({ error: "containers[] required (max 200)" }, 400);
+    const store = await readJsonKV(env, "ais:tracker", null) || { containers: {} };
+    let n = 0;
+    for (const r of list) {
+      const c = String((r && r.container) || "").trim().toUpperCase();
+      if (!/^[A-Z]{4}\d{7}$/.test(c) || !Array.isArray(r.events)) continue;
+      store.containers[c] = {
+        carrier: String(r.carrier || "").slice(0, 20),
+        syncedAt: String(r.syncedAt || new Date().toISOString()).slice(0, 30),
+        events: r.events.slice(0, 100).map(e => ({
+          date: String((e && e.date) || "").slice(0, 30), code: String((e && e.code) || "").slice(0, 8),
+          kind: String((e && e.kind) || "").slice(0, 16), description: String((e && e.description) || "").slice(0, 80),
+          locode: String((e && e.locode) || "").slice(0, 8), isActual: !!(e && e.isActual) }))
+      };
+      n++;
+    }
+    store.updatedAt = new Date().toISOString();
+    await env.OQC.put("ais:tracker", JSON.stringify(store));
+    return json({ ok: true, saved: n });
   }
   /* 선사 일정 수동 입력 (ANL 등). MBL별로 upsert, {mbl, delete:true}면 삭제 */
   if (url.pathname === '/ais-plan' && req.method === 'POST') {

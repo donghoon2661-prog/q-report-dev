@@ -975,3 +975,9 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 #qview .adv-more p{font-size:11.5px}
 #qview .adv-key{margin-left:auto;font-size:10px;color:var(--blue);border:1px solid var(--line2);border-radius:5px;padding:3px 8px}
 @media (max-width:900px){#qview .advice{margin:0 10px 12px}}
+/* 해외 상세(#side) 컨테이너 사진 (S4) */
+#side .au-photos{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+#side .au-ph+.au-ph{margin-top:12px}
+#side .au-ph .pogrid{grid-template-columns:repeat(2,1fr);margin:6px 0}
+#side .au-ph .gal{grid-template-columns:repeat(3,1fr)}
+#side .galbox:empty{display:none}

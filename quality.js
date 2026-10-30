@@ -397,9 +397,9 @@ function buildQuality(){
     const prevChart = Chart.getChart(document.getElementById('chart'));
     if(prevChart) prevChart.destroy();
     const barColor = worst.map(v=> v==null?qvar('line2','#2A3446'): isOff(curItem,v)?qvar('gA','#FF6D5E'): isNear(curItem,v)?qvar('gB','#F5B84F'):qvar('blue','#4DA3FF'));
-    const ds=[{type:'bar',label:'Lot 최악값',data:worst,backgroundColor:barColor,borderRadius:5,maxBarThickness:52},
-      {type:'line',label:'S1 한계',data:lots.map(()=>curItem.s1),borderColor:qvar('gA','#FF6D5E'),borderWidth:1.6,borderDash:[6,4],pointRadius:0}];
-    if(curItem.s2!=null) ds.push({type:'line',label:'S2 경계',data:lots.map(()=>curItem.s2),borderColor:qvar('gB','#F5B84F'),borderWidth:1.2,borderDash:[3,4],pointRadius:0});
+    const ds=[{type:'bar',label:t('worstByLot'),data:worst,backgroundColor:barColor,borderRadius:5,maxBarThickness:52},
+      {type:'line',label:t('off'),data:lots.map(()=>curItem.s1),borderColor:qvar('gA','#FF6D5E'),borderWidth:1.6,borderDash:[6,4],pointRadius:0}];
+    if(curItem.s2!=null) ds.push({type:'line',label:t('near'),data:lots.map(()=>curItem.s2),borderColor:qvar('gB','#F5B84F'),borderWidth:1.2,borderDash:[3,4],pointRadius:0});
     chart=new Chart(document.getElementById('chart'),{
       data:{labels:lots,datasets:ds},
       options:{responsive:true,maintainAspectRatio:false,

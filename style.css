@@ -981,3 +981,6 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 #side .au-ph .pogrid{grid-template-columns:repeat(2,1fr);margin:6px 0}
 #side .au-ph .gal{grid-template-columns:repeat(3,1fr)}
 #side .galbox:empty{display:none}
+/* 호주 표 행: 미국 표처럼 누를 수 있다는 표시 (누르면 상세·사진) */
+#au-map tbody tr,#au-list tbody tr{cursor:pointer}
+#au-map tbody tr:hover,#au-list tbody tr:hover{background:rgba(255,255,255,.03)}

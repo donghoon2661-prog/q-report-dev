@@ -390,14 +390,15 @@ function showPO(s,i){
       const m = v.match(/^(\S+)\s*\(Container\s*(\d+)\s*of\s*(\d+)\)/i);
       const fn = poFolderName(v);
       const pk = typeof poKey==="function" ? poKey(v) : null;
-      const attr = (fn ? ` data-folder="${fn}" data-k="${k}" title="Click to view photos — ${fn}"` : "")
+      const attr = (fn ? ` data-folder="${fn}" data-k="${k}"` : "")
                  + (pk ? ` data-pokey="${pk}"` : "");
-      const cls = fn ? "pocell has-photo" : "pocell";
+      /* 사진 폴더가 실제로 있는지는 pCloud 목록을 받은 뒤 has-photo 를 붙인다 */
+      const cls = "pocell";
       /* 그 컨테이너 COA 섹터로 가는 표시(QUALITY 를 볼 수 있을 때만). 점 색 = 해소 안 된 탐지의 최고 등급 */
       const coa = (typeof coaSectorOf==="function" && typeof ACCESS_ROLE!=="undefined" && ACCESS_ROLE!=="eta") ? coaSectorOf(v) : null;
       // 등급(색·A/B/C)은 관리자만 본다. 다른 계정은 "COA"만.
       const coaAdmin = ACCESS_ROLE==="admin";
-      const coaBtn = coa ? `<button class="pocoa${coaAdmin?" g"+(coa.grade||"0"):""}" data-sheet="${coa.sheet}" data-idx="${coa.idx}" title="Open COA backdata">COA${coaAdmin&&coa.grade?" "+coa.grade:""}</button>` : "";
+      const coaBtn = coa ? `<button class="pocoa${coaAdmin?" g"+(coa.grade||"0"):""}" data-sheet="${coa.sheet}" data-idx="${coa.idx}" data-po="${v}" title="Open COA backdata">COA${coaAdmin&&coa.grade?" "+coa.grade:""}</button>` : "";
       out += m
         ? `<div class="${cls}"${attr}><span class="po">${m[1]}</span><span class="cn">${m[2]} / ${m[3]}</span>${coaBtn}</div>`
         : `<div class="${cls}"${attr}><span class="po">${v}</span>${coaBtn}</div>`;
@@ -434,7 +435,7 @@ function showPO(s,i){
   p.querySelectorAll(".pocoa").forEach(b=>b.addEventListener("click", ev=>{
     ev.stopPropagation();
     show("quality");
-    if(typeof window.openCoaSector==="function") window.openCoaSector(b.dataset.sheet, +b.dataset.idx);
+    if(typeof window.openCoaSector==="function") window.openCoaSector(b.dataset.sheet, +b.dataset.idx, {booking:s.booking, po:b.dataset.po});
   }));
   const gw = document.getElementById("galwrap");
   const code = PHOTOS[s.booking] || null;
@@ -443,16 +444,26 @@ function showPO(s,i){
       ? `<div class="gal-title">Select a PO / container above to see its photos</div>`
       : `<div class="gal-title dim">No photo link registered for ${s.booking}</div>`;
     if(code){
-      p.querySelectorAll(".pocell.has-photo").forEach(cell=>{
-        cell.addEventListener("click", ev=>{
+      /* 부킹 폴더 바로 밑 하위 폴더 이름과 맞는 칸만 누를 수 있게 한다 */
+      pcList(code).then(root=>{
+        const have = new Set((root.folders||[]).map(f=>String(f.name).trim().toUpperCase()));
+        let n = 0;
+        p.querySelectorAll(".pocell[data-folder]").forEach(cell=>{
+          if(!have.has(cell.dataset.folder.toUpperCase())) return;
+          n++;
+          cell.classList.add("has-photo");
+          cell.title = "Click to view photos — " + cell.dataset.folder;
+          cell.addEventListener("click", ev=>{
           ev.stopPropagation();
           p.querySelectorAll(".pocell").forEach(c=>c.classList.remove("sel"));
           cell.classList.add("sel");
           const label = (list[+cell.dataset.k]||"").replace(/\s*\(/," (");
           gw.innerHTML = `<div class="galbox"></div>`;
           renderGallery(gw.querySelector(".galbox"), label, code, cell.dataset.folder);
+          });
         });
-      });
+        if(!n) gw.innerHTML = `<div class="gal-title dim">No container photo folders for ${s.booking}</div>`;
+      }).catch(e=>{ gw.innerHTML = `<div class="gal-title warn">photos unavailable — ${e.message||e}</div>`; });
     }
   }
   p.onclick = e => { if(e.target.closest('.pocell') || e.target.closest('.galbox')) return; closePO(); };

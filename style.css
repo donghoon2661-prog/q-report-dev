@@ -498,6 +498,10 @@ dd .dim{opacity:.65}
 #popanel{border:1px solid var(--sail);background:var(--hull);padding:16px;
   max-width:100%;box-sizing:border-box;overflow-x:hidden}
 #popanel[hidden]{display:none}
+/* 누른 행 바로 아래에 펼친 상세 */
+#vtable #podetail-row>td{padding:0 12px 14px;background:transparent}
+#vtable tbody #podetail-row:hover{background:transparent}
+#popanel.inline{margin-top:2px}
 #popanel .close{float:right;background:none;border:1px solid var(--line);color:var(--fog);
   font-family:'IBM Plex Mono';font-size:13px;line-height:1;padding:5px 10px;cursor:pointer}
 #popanel .close:hover{color:var(--paper);border-color:var(--fog)}

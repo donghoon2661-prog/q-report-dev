@@ -768,6 +768,9 @@
     } catch (e) { return null; }
   }
 
+  var TRK_DESC = { GTOT: 'Gate out', GTIN: 'Gate in', LOAD: 'Loaded', DEPA: 'Departure', ARRI: 'Arrival',
+    DISC: 'Discharged', RTRN: 'Empty return' };
+
   function applyTracker(aisJson) {
     var plans = aisJson && aisJson.plans && typeof aisJson.plans === 'object' ? aisJson.plans : {};
     Object.keys(plans).forEach(function (k) {
@@ -778,7 +781,12 @@
       cs.forEach(function (c) {
         var r = plan.tracker[c];
         (r && Array.isArray(r.events) ? r.events : []).forEach(function (e) {
-          if (e && typeof e.date === 'string') evs.push(Object.assign({ container: c }, e));
+          if (!e || typeof e.date !== 'string' || !e.date) return;
+          var x = Object.assign({ container: c }, e);
+          /* 옛 폰 코드는 kind·description 을 안 보냈다 — 코드로 채운다(GATE_IN_RE 등이 description 을 봄) */
+          if (!x.kind) x.kind = /^(DEPA|ARRI)$/.test(x.code) ? 'transport' : 'equipment';
+          if (!x.description) x.description = TRK_DESC[x.code] || '';
+          evs.push(x);
         });
       });
       if (!evs.length) return;

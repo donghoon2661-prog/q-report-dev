@@ -422,8 +422,71 @@ function buildQuality(){
       '<div class="mcard"><div class="l">'+t('marginToLimit')+'</div><div class="v '+cls+'">'+marginTxt+'</div></div>'+
       '<div class="mcard"><div class="l">'+t('allTimeWorst')+'</div><div class="v">'+histWorst+'</div></div>'+
       '<div class="mcard"><div class="l">'+t('status')+'</div><div class="v '+cls+'">'+(cls==='bad'?t('statusOff'):cls==='warn'?t('statusNear'):t('statusOk'))+'</div></div>';
+    renderAdvice();
+  }
+  /* ── 항목별 advice (Worker /advice) ──
+     관리자: 한글·영어, 승인 대기면 ○(일반 계정에 공개) ✕(보류) 버튼. 일반 계정: 승인된 영어만.
+     문장은 엑셀 동기화 때 Claude가 쓴다(tools/sync/advice.py). */
+  const isAdmin = () => typeof ACCESS_ROLE!=='undefined' && ACCESS_ROLE==='admin';
+  const esc = v => String(v==null?'':v).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+  const advKey = () => { try{ return localStorage.getItem('oqc_refresh_key')||''; }catch(_){ return ''; } };
+  async function loadAdvice(){
+    const key = isAdmin() ? advKey() : '';
+    try{
+      const r = await fetch(API_ROOT+'/advice', {cache:'no-store', headers: key?{'X-Refresh-Key':key}:{}});
+      window.__qAdvice = r.ok ? await r.json() : {items:{}};
+      window.__qAdviceFull = !!window.__qAdvice.full;   // 키가 맞으면 Worker가 full:true 와 승인 대기 문장까지 준다
+    }catch(_){ window.__qAdvice = {items:{}}; window.__qAdviceFull = false; }
+    renderAdvice();
+  }
+  async function adviceAction(id, action, n){
+    if(action==='delete' && !confirm('이 advice를 삭제할까요?')) return;
+    const key = typeof getKey==='function' ? await getKey() : advKey();
+    if(!key) return;
+    const r = await fetch(API_ROOT+'/advice', {method:'POST',
+      headers:{'Content-Type':'application/json','X-Refresh-Key':key}, body:JSON.stringify({action, id, n})});
+    if(!r.ok){ alert('Save failed: '+((await r.json().catch(()=>({}))).error||r.status)); if(r.status===401 && typeof forgetKey==='function') forgetKey(); return; }
+    window.__qAdvice = await r.json(); window.__qAdviceFull = true;
+    renderAdvice();
+  }
+  /* 한 줄 = 작성일(왼쪽) + 문장. 최근 것이 위. 관리자는 상태·○✕·삭제, 일반 계정은 승인된 영어만 */
+  function renderAdvice(){
+    const box = document.getElementById('advbox');
+    if(!box) return;
+    const all = (window.__qAdvice && window.__qAdvice.items) || {};
+    const list = Array.isArray(all[curItem.id]) ? all[curItem.id] : [];
+    const day = s => s ? String(s).slice(0,10) : '';
+    const dateCol = e => '<div class="adv-d">'+day(e.at)+(e.lot?'<span>Lot '+esc(e.lot)+'</span>':'')+'</div>';
+    let h = '';
+    if(!isAdmin()){
+      h = list.map(e=>'<div class="adv-row">'+dateCol(e)+'<div class="adv-b"><p class="adv-en">'+esc(e.en)+'</p></div></div>').join('');
+      if(h) h = '<div class="adv-h">Quality advice</div>'+h;
+    }else if(!window.__qAdviceFull){
+      h = '<div class="adv-h">Advice <span>공개 중 '+list.length+'건</span><button class="adv-key" id="advKeyBtn">키 넣고 전체 보기</button></div>'+
+          list.map(e=>'<div class="adv-row">'+dateCol(e)+'<div class="adv-b"><p class="adv-en">'+esc(e.en)+'</p></div></div>').join('');
+    }else{
+      const ST = {pending:['new','승인 대기'], approved:['ok','공개 중'], rejected:['rej','보류 · 일반 계정에 안 보임']};
+      h = '<div class="adv-h">Advice <span>'+(list.length?list.length+'건':'이 항목은 아직 문장이 없습니다')+'</span></div>'+
+        list.slice().reverse().map(e=>{
+          const st = ST[e.state]||ST.pending;
+          const btns = (e.state!=='approved'?'<button class="adv-ok" data-act="approve" data-n="'+e.n+'" title="일반 계정에 공개 (영어)">○</button>':'')+
+                       (e.state==='pending'?'<button class="adv-no" data-act="reject" data-n="'+e.n+'" title="보류 — 일반 계정에 안 보임">✕</button>':'')+
+                       '<button class="adv-del" data-act="delete" data-n="'+e.n+'" title="삭제">🗑</button>';
+          return '<div class="adv-row">'+dateCol(e)+'<div class="adv-b"><div class="adv-top"><b class="adv-st '+st[0]+'">'+st[1]+'</b>'+
+                 '<span class="adv-btns">'+btns+'</span></div><p class="adv-ko">'+esc(e.ko)+'</p><p class="adv-en">'+esc(e.en)+'</p>'+
+                 ((e.dko||e.den)?'<details class="adv-more"><summary>자세히 (관리자만)</summary>'+
+                   (e.dko?'<p class="adv-ko">'+esc(e.dko)+'</p>':'')+(e.den?'<p class="adv-en">'+esc(e.den)+'</p>':'')+'</details>':'')+
+                 '</div></div>';
+        }).join('');
+    }
+    box.innerHTML = h;
+    box.hidden = !h;
+    box.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',()=>adviceAction(curItem.id, b.dataset.act, +b.dataset.n)));
+    const kb = document.getElementById('advKeyBtn');
+    if(kb) kb.addEventListener('click', async()=>{ if(typeof getKey==='function' && await getKey()) loadAdvice(); });
   }
   draw();
+  loadAdvice();
   } catch(chartErr) {
     console.error('[quality] chart section failed, continuing with other panels:', chartErr);
   }

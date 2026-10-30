@@ -950,3 +950,28 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
   #mapwrap { grid-template-columns: minmax(0, 1fr) 320px; }
   #mapwrap > *, .tablerow > * { min-width: 0; }
 }
+/* QUALITY 항목별 advice (스펙 관제 상태 카드 아래) */
+#qview .advice{margin:0 18px 14px;padding:10px 12px;max-height:260px;overflow-y:auto;border:1px solid var(--line);border-left:2px solid var(--blue);border-radius:0 8px 8px 0;background:var(--panel2)}
+#qview .adv-h{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);letter-spacing:.04em;margin-bottom:6px;flex-wrap:wrap}
+#qview .adv-row{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+#qview .adv-h+.adv-row{border-top:0;padding-top:2px}
+#qview .adv-d{flex:0 0 78px;font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.5}
+#qview .adv-d span{display:block;font-size:9.5px;color:var(--dim)}
+#qview .adv-b{flex:1;min-width:0}
+#qview .adv-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+#qview .advice p{font-size:12px;line-height:1.6;margin:0 0 6px}
+#qview .adv-ko{color:var(--text)}
+#qview .adv-en{color:var(--muted)}
+#qview .adv-st{font-weight:600;font-size:10px;padding:2px 7px;border-radius:4px}
+#qview .adv-st.new{background:rgba(245,184,79,.16);color:var(--gB)}
+#qview .adv-st.rej{background:rgba(255,109,94,.14);color:var(--gA)}
+#qview .adv-st.ok{background:rgba(67,201,139,.14);color:var(--ok)}
+#qview .adv-btns{margin-left:auto;display:flex;gap:6px}
+#qview .adv-ok,#qview .adv-no,#qview .adv-del{width:28px;height:28px;border-radius:50%;border:1px solid var(--line2);font-size:14px;line-height:1}
+#qview .adv-ok{color:var(--ok)}#qview .adv-ok:hover{border-color:var(--ok);background:rgba(67,201,139,.12)}
+#qview .adv-no{color:var(--gA)}#qview .adv-no:hover{border-color:var(--gA);background:rgba(255,109,94,.12)}
+#qview .adv-del{font-size:12px;color:var(--muted)}#qview .adv-del:hover{border-color:var(--gA)}
+#qview .adv-more{margin-top:2px}#qview .adv-more summary{cursor:pointer;font-size:10.5px;color:var(--blue);margin-bottom:4px}
+#qview .adv-more p{font-size:11.5px}
+#qview .adv-key{margin-left:auto;font-size:10px;color:var(--blue);border:1px solid var(--line2);border-radius:5px;padding:3px 8px}
+@media (max-width:900px){#qview .advice{margin:0 10px 12px}}

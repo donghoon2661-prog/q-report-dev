@@ -10,6 +10,8 @@
  * POST /collect?maps=1    지도 좌표만 보충 (X-Refresh-Key)
  * GET  /po                PO/컨테이너 매핑 조회 (공개)
  * POST /po                PO 매핑 저장 (X-Refresh-Key)
+ * GET  /advice            QUALITY 항목별 advice (공개: 승인된 영어만, 키 있으면 전체)
+ * POST /advice            draft / approve / reject / delete (X-Refresh-Key)
  * GET  /pcloud?code=[&folder=] pCloud 공개 폴더 프록시 (CORS 우회, 하위 폴더 이름으로 탐색)
  * GET  /history[?bkg=]     스케줄 변경 이력
  * GET  /alertstate         마지막 통지 상태
@@ -3300,6 +3302,69 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       }
     }
 
+    /* --- QUALITY 항목별 advice (항목마다 날짜별로 쌓인다, 10-30 대장님 결정) ---
+       KV "advice" = { seq, items: { <항목 id>: [ {n, ko, en, dko, den, lot, at, state:"pending"|"approved"|"rejected", decided} ] }, updated }
+       ko/en = 쉬운 말 2~4문장(공개용), dko/den = 관리자만 보는 자세한 설명(공개 GET에는 절대 안 나감).
+       GET 공개: 승인된 문장의 영어만(최근 것부터). GET + X-Refresh-Key: 전체(관리자 화면, full:true).
+       POST (X-Refresh-Key):
+         {action:"draft", items:{id:{ko,en,dko?,den?,lot?}}}  동기화 도구가 새 문장을 쌓음 → 관리자 승인 대기
+         {action:"approve"|"reject", id, n}       관리자 ○/✕. ✕는 일반 계정에 안 보임
+         {action:"delete", id, n}                 관리자 삭제
+       새 문장이 승인 대기여도 이전에 승인한 문장은 그대로 보인다. */
+    if (url.pathname === "/advice") {
+      const ID_RE = /^[a-z_]{2,12}$/;
+      const MAX = 2000, KEEP = 200;          // 문장 길이 한도, 항목당 보관 개수(넘으면 오래된 것부터 버림)
+      let st = { seq: 0, items: {} };
+      try { st = JSON.parse((await env.OQC.get("advice")) || "null") || st; } catch (_) {}
+      st.items = st.items || {}; st.seq = st.seq || 0;
+      if (req.method === "GET") {
+        if (auth(req, env)) return json({ ...st, full: true });
+        const pub = {};
+        for (const [id, list] of Object.entries(st.items)) {
+          const ok = (Array.isArray(list) ? list : []).filter(e => e.state === "approved")
+            .map(e => ({ n: e.n, en: e.en, lot: e.lot || null, at: e.at })).reverse();
+          if (ok.length) pub[id] = ok;
+        }
+        return json({ items: pub, updated: st.updated || null });
+      }
+      if (req.method === "POST") {
+        if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+        let body;
+        try { body = await req.json(); } catch (_) { return json({ error: "JSON parse failed" }, 400); }
+        const now = new Date().toISOString();
+        if (body.action === "draft") {
+          const inItems = body.items;
+          if (!inItems || typeof inItems !== "object") return json({ error: "items object is required" }, 400);
+          const bad = Object.entries(inItems).filter(([id, v]) => {
+            const ko = String((v && v.ko) || "").trim(), en = String((v && v.en) || "").trim();
+            const long = ["dko", "den"].some(k => v && v[k] && String(v[k]).length > MAX * 2);
+            return !ID_RE.test(id) || !ko || !en || ko.length > MAX || en.length > MAX || long;
+          }).map(([id]) => id);
+          if (bad.length) return json({ error: "Bad items: " + bad.join(",") }, 400);
+          for (const [id, v] of Object.entries(inItems)) {
+            const list = Array.isArray(st.items[id]) ? st.items[id] : [];
+            list.push({ n: ++st.seq, ko: String(v.ko).trim(), en: String(v.en).trim(),
+                        dko: v.dko ? String(v.dko).trim() : null, den: v.den ? String(v.den).trim() : null,
+                        lot: v.lot ? String(v.lot).slice(0, 20) : null, at: now, state: "pending" });
+            st.items[id] = list.slice(-KEEP);
+          }
+        } else if (["approve", "reject", "delete"].includes(body.action)) {
+          const list = Array.isArray(st.items[body.id]) ? st.items[body.id] : [];
+          const k = list.findIndex(e => e.n === Number(body.n));
+          if (k < 0) return json({ error: "No advice " + body.id + " #" + body.n }, 404);
+          if (body.action === "delete") list.splice(k, 1);
+          else { list[k].state = body.action === "approve" ? "approved" : "rejected"; list[k].decided = now; }
+          st.items[body.id] = list;
+        } else {
+          return json({ error: "action must be draft, approve, reject or delete" }, 400);
+        }
+        st.updated = now;
+        await env.OQC.put("advice", JSON.stringify(st));
+        return json({ ...st, full: true });
+      }
+      return json({ error: "Method not allowed" }, 405);
+    }
+
     /* --- PO / 컨테이너 매핑 --- */
     if (url.pathname === "/po") {
       if (req.method === "GET") {
@@ -3716,7 +3781,7 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
     }
 
     return json({ error: "Not found",
-      paths: ["/data", "/lookup?bkg=", "/bookings", "/po", "/pcloud?code=", "/history", "/alertstate", "/notify-test", "/weekly-test", "/collect", "/collect?maps=1", "/backup", "/restore", "/raw?bkg=", "/debug"] }, 404);
+      paths: ["/data", "/lookup?bkg=", "/bookings", "/po", "/advice", "/pcloud?code=", "/history", "/alertstate", "/notify-test", "/weekly-test", "/collect", "/collect?maps=1", "/backup", "/restore", "/raw?bkg=", "/debug"] }, 404);
   },
 
   /* Cron — 분(minute)으로 종류를 구분한다.

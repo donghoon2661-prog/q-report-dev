@@ -463,18 +463,17 @@ function buildQuality(){
   const firstBind = !window.__qBound;
   window.__qBound = true;
   if(firstBind){
-  document.getElementById('mClose').addEventListener('click',()=>{
+  /* SHIPMENT 의 COA 버튼으로 들어왔으면(__coaReturn) 닫을 때 그 선적 행으로 돌아간다 */
+  const closeOverlay = () => {
+    const wasOpen = overlay.classList.contains('show');
     overlay.classList.remove('show'); coaPanelClose();
     document.body.classList.remove('modal-open');
-  });
-  overlay.addEventListener('click',e=>{if(e.target===overlay){
-    overlay.classList.remove('show'); coaPanelClose();
-    document.body.classList.remove('modal-open');
-  }});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){
-    overlay.classList.remove('show'); coaPanelClose();
-    document.body.classList.remove('modal-open');
-  }});
+    const ret = window.__coaReturn; window.__coaReturn = null;
+    if(wasOpen && ret && typeof window.__qGoShip==='function') window.__qGoShip(ret.booking, ret.po);
+  };
+  document.getElementById('mClose').addEventListener('click', closeOverlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay) closeOverlay();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape') closeOverlay();});
   }
 
   const GROUPS=[
@@ -502,6 +501,7 @@ function buildQuality(){
     return '';
   }
   function openBackdata(name, start){
+    window.__coaReturn = null;
     const sheet=DATA.sheets.find(s=>s.name===name);
     start = (start>=0 && start<sheet.sectors.length) ? start : 0;
     document.getElementById('mTitle').textContent=name;
@@ -524,7 +524,7 @@ function buildQuality(){
     if(on && start) on.scrollIntoView({block:'nearest', inline:'center'});
   }
   /* SHIPMENT PO 칸의 COA 표시에서 부른다: 그 섹터의 백데이터를 바로 연다 */
-  window.openCoaSector = (name, idx) => openBackdata(name, idx);
+  window.openCoaSector = (name, idx, ret) => { openBackdata(name, idx); window.__coaReturn = ret || null; };
   function closeBackdata(){
     overlay.classList.remove('show'); coaPanelClose();
     document.body.classList.remove('modal-open');
@@ -534,6 +534,7 @@ function buildQuality(){
     const list = (typeof CUR!=='undefined' && CUR && CUR.shipments) || [];
     const i = list.findIndex(s=>s.booking===booking);
     if(i<0) return;
+    window.__coaReturn = null;
     closeBackdata();
     show('ship');
     if(typeof closePO==='function') closePO();   // 이미 펼쳐져 있으면 행 클릭이 접기가 되므로 먼저 닫는다
@@ -544,6 +545,7 @@ function buildQuality(){
       if(cell){ cell.click(); cell.scrollIntoView({block:'center', behavior:'smooth'}); }
     }, 350);
   }
+  window.__qGoShip = goShipment;
   function renderSector(sheet,idx){
     const sec=sheet.sectors[idx];
     const sizes=Object.keys(sec.rows);

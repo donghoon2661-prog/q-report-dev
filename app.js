@@ -424,6 +424,7 @@ function deliveryHTML(s) {
 }
 
 function buildTable(data){
+  if(typeof closePO==='function') closePO();   // 행 아래 펼친 상세가 표와 함께 지워지지 않게
   document.getElementById('vtbody').innerHTML = rowsHTML(data.shipments);
   document.getElementById('otbody').innerHTML = rowsHTML(data.shipments);
   ["vremark","oremark"].forEach(id=>{ const el = document.getElementById(id); if(el) el.innerHTML = GAP_REMARK; });

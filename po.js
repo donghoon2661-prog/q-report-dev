@@ -373,6 +373,9 @@ function paintMarkers(){
   });
 }
 function showPO(s,i){
+  /* 펼쳐진 행을 다시 누르면 접는다 */
+  const open0 = document.getElementById('popanel');
+  if(open0 && !open0.hidden && open0.classList.contains('inline') && poSelected===i){ closePO(); return; }
   poSelected = i; paintMarkers();
   const list = PO[s.booking] || s.pos || [];
   let cells;
@@ -418,7 +421,7 @@ function showPO(s,i){
      ${tsDwellHTML(s)}${eta}${cells}${note}<div id="galwrap"></div>
      <p class="hintclose">TAP ANYWHERE TO CLOSE · ESC</p>`;
   p.hidden=false;
-  document.querySelector('.tablerow').classList.add('open');
+  placePO(p,i);
   document.getElementById('poclose').addEventListener('click',e=>{e.stopPropagation();closePO();});
   const gw = document.getElementById("galwrap");
   const code = PHOTOS[s.booking] || null;
@@ -442,11 +445,45 @@ function showPO(s,i){
   p.onclick = e => { if(e.target.closest('.pocell') || e.target.closest('.galbox')) return; closePO(); };
 }
 document.addEventListener('keydown',e=>{ if(e.key==="Escape") closePO(); });
+
+/* 상세를 누른 행 바로 아래에 펼친다(2026-10-30). 표에 그 행이 안 보이면(지도·알림에서 연 경우 등) 예전처럼 표 자리에 띄운다. */
+function placePO(p,i){
+  const row = document.querySelector('.tablerow');
+  row.classList.remove('open');   // 예전 방식으로 열려 있으면 표가 숨겨져 있어 행이 안 보이므로 먼저 푼다
+  const tr = document.querySelector(`#vtbody tr[data-i="${i}"]`);
+  if(!tr || !tr.offsetParent){
+    restorePO(p);
+    row.classList.add('open');
+    return;
+  }
+  let host = document.getElementById('podetail-row');
+  if(!host){
+    host = document.createElement('tr');
+    host.id = 'podetail-row';
+    host.appendChild(document.createElement('td'));
+  }
+  host.firstChild.colSpan = tr.children.length;
+  tr.after(host);
+  host.firstChild.appendChild(p);
+  p.classList.add('inline');
+  requestAnimationFrame(()=>tr.scrollIntoView({block:'nearest',behavior:'smooth'}));
+}
+/* 원래 자리(.tablerow 끝)로 돌려놓는다. 표를 다시 그리기 전에도 불러야 패널이 같이 지워지지 않는다. */
+function restorePO(p){
+  p = p || document.getElementById('popanel');
+  if(!p) return;
+  const row = document.querySelector('.tablerow');
+  if(p.parentElement !== row) row.appendChild(p);
+  p.classList.remove('inline');
+  row.classList.remove('open');
+  const host = document.getElementById('podetail-row');
+  if(host) host.remove();
+}
 function closePO(){
   const pp=document.getElementById('popanel'); if(!pp||pp.hidden) return;
   poSelected=null; paintMarkers();
   const p=document.getElementById('popanel');
   p.hidden=true; p.innerHTML="";
-  document.querySelector('.tablerow').classList.remove('open');
+  restorePO(p);
   document.querySelectorAll('#vtbody tr,#otbody tr').forEach(t=>t.classList.remove('on'));
 }

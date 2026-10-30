@@ -759,54 +759,11 @@
     var side = byId('side');
     if (!side) return;
     side.innerHTML = detailHtml(model);
-    renderAuPhotos(side, model);
-  }
-
-  /* 해외 컨테이너 사진 (S4, 10-30). 부킹 폴더 링크는 미국과 같은 /po photos(부킹 키, 엑셀 동기화가 넣음).
-     부킹 폴더의 하위 폴더(PO 이름, 예: AU_1924661260)를 칸으로 보여 주고, 누르면 po.js 갤러리로 연다.
-     하위 폴더가 없으면 칸을 만들지 않는다(누를 수 없는 칸을 두지 않음). */
-  function renderAuPhotos(side, model) {
-    if (typeof PHOTOS === 'undefined' || typeof pcList !== 'function' || typeof renderGallery !== 'function') return;
-    var m = model || {};
-    var list = Array.isArray(m.shipments) ? m.shipments : [m];
-    var wrap = document.createElement('div');
-    wrap.className = 'au-photos';
-    side.appendChild(wrap);
-    var norm = function (s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
-    list.forEach(function (s) {
-      var code = s && s.booking ? PHOTOS[s.booking] : null;
-      if (!code) return;
-      var box = document.createElement('div');
-      box.className = 'au-ph';
-      box.innerHTML = '<div class="gal-title">' + esc(s.booking) + ' · photos</div><div class="pogrid"></div><div class="galbox"></div>';
-      wrap.appendChild(box);
-      var grid = box.querySelector('.pogrid'), gal = box.querySelector('.galbox');
-      var pos = Array.isArray(s.po) ? s.po : (s.po ? String(s.po).split(',') : []);
-      pcList(code).then(function (root) {
-        var folders = (root.folders || []).filter(function (f) { return !/^COA/i.test(f.name); });
-        if (!folders.length) { grid.outerHTML = '<div class="gal-title dim">No container photo folders</div>'; return; }
-        folders.forEach(function (f) {
-          var po = pos.filter(function (p) { return norm(p) && norm(f.name).indexOf(norm(p)) >= 0; })[0];
-          var cell = document.createElement('div');
-          cell.className = 'pocell has-photo';
-          cell.title = 'Click to view photos — ' + f.name;
-          cell.innerHTML = '<span class="po">' + esc(po || f.name) + '</span>'
-            + (s.container && folders.length === 1 ? '<span class="cn">' + esc(s.container) + '</span>' : '');
-          cell.addEventListener('click', function (ev) {
-            ev.stopPropagation();
-            wrap.querySelectorAll('.pocell').forEach(function (c) { c.classList.remove('sel'); });
-            cell.classList.add('sel');
-            renderGallery(gal, po || f.name, code, f.name);
-          });
-          grid.appendChild(cell);
-        });
-      }).catch(function (e) { grid.outerHTML = '<div class="gal-title warn">photos unavailable — ' + esc(e.message || e) + '</div>'; });
-    });
   }
 
   /* 호주 표 행 클릭 → 같은 순서(인덱스)의 auRows 행을 찾고,
      그 MBL 로 buildModels 모델을 매핑해 상세를 연다. */
-  function pickAuRow(idx) {
+  function pickAuRow(idx, tr) {
     var CG = getCountryGroups();
     var AL = getAisLayer();
     if (!ais || !CG || !AL) return;
@@ -819,22 +776,79 @@
       if (String(models[i].mbl) === String(row.mbl)) { model = models[i]; break; }
     }
     if (!model) return;
-    showAuDetail(model);
-    if (typeof setView === 'function') {
-      try { setView('map'); } catch (e) { /* 무시 */ }
+    showAuDetail(model);   /* 지도 옆 상세도 맞춰 두되, 화면은 지도로 옮기지 않는다(10-30 대장님) */
+    if (tr) toggleAuInline(tr, model);
+  }
+
+  /* 미국 PO 상세처럼 누른 행 바로 아래에 펼친다(같은 행을 다시 누르면 접음).
+     PO·컨테이너 칸 + 사진(부킹 폴더의 하위 폴더가 있는 칸만 누를 수 있음). */
+  function toggleAuInline(tr, m) {
+    var tbody = tr.parentNode;
+    var open = tbody.querySelector('tr.au-detail-row');
+    var same = open && open._forMbl === m.mbl && open.previousSibling === tr;
+    document.querySelectorAll('tr.au-detail-row').forEach(function (r) { r.parentNode.removeChild(r); });
+    document.querySelectorAll('tr.au-open').forEach(function (r) { r.classList.remove('au-open'); });
+    if (same) return;
+    var cols = tr.cells ? tr.cells.length : 4;
+    var drow = document.createElement('tr');
+    drow.className = 'au-detail-row';
+    drow._forMbl = m.mbl;
+    var pos = Array.isArray(m.po) ? m.po : (m.po ? String(m.po).split(',') : []);
+    pos = pos.map(function (p) { return String(p).trim(); }).filter(Boolean);
+    var conts = [];
+    String(m.container || '').split(',').forEach(function (c) { c = c.trim(); if (c && conts.indexOf(c) < 0) conts.push(c); });
+    var tq = m.traqo;
+    if (tq && tq.inherited !== true && Array.isArray(tq.containers)) {
+      tq.containers.forEach(function (c) { var x = c && c.number ? String(c.number).trim() : ''; if (x && conts.indexOf(x) < 0) conts.push(x); });
     }
-    /* 상세(#side)는 지도 옆(폰은 지도 위)에 있어 표에서 누르면 바뀐 게 안 보인다 -> 상세로 화면을 옮긴다 */
-    var side = byId('side');
-    if (side && typeof side.getBoundingClientRect === 'function') {
-      var r = side.getBoundingClientRect();
-      if (r.top < 0 || r.top > (window.innerHeight || 0) * 0.6) {
-        try { side.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* 무시 */ }
-      }
+    var n = Math.max(pos.length, conts.length, 1);
+    var cells = '';
+    for (var k = 0; k < n; k++) {
+      cells += '<div class="pocell" data-k="' + k + '"><span class="po">' + esc(pos[k] || pos[0] || '—') + '</span>'
+        + (conts[k] ? '<span class="cn">' + esc(conts[k]) + '</span>' : '') + '</div>';
     }
-    if (isNum(model.lat) && isNum(model.lng) && mapCtl.map &&
-        typeof mapCtl.map.panTo === 'function') {
-      try { mapCtl.map.panTo([model.lat, model.lng]); } catch (e) { /* 무시 */ }
+    var title = esc(m.name || '') + (m.voyage ? ' ' + esc(m.voyage) : '');
+    drow.innerHTML = '<td colspan="' + cols + '"><div class="au-inline">'
+      + '<button class="close" type="button" title="Close">✕</button>'
+      + '<h3>' + title + '</h3><div class="sb">' + esc(m.booking || '—') + ' · ' + n + ' container(s)</div>'
+      + '<div class="pogrid">' + cells + '</div>'
+      + '<div class="polegend"><span><i style="background:#7FD8FF"></i>PO No.</span><span><i style="background:#F2C14E"></i>Container</span></div>'
+      + '<div class="au-gal"></div></div></td>';
+    tbody.insertBefore(drow, tr.nextSibling);
+    tr.classList.add('au-open');
+    var box = drow.querySelector('.au-inline'), gal = drow.querySelector('.au-gal');
+    box.querySelector('.close').addEventListener('click', function (ev) {
+      ev.stopPropagation(); drow.parentNode.removeChild(drow); tr.classList.remove('au-open');
+    });
+    var code = (typeof PHOTOS !== 'undefined' && m.booking) ? PHOTOS[m.booking] : null;
+    if (!code || typeof pcList !== 'function' || typeof renderGallery !== 'function') {
+      gal.innerHTML = '<div class="gal-title dim">No photo link registered for ' + esc(m.booking || '—') + '</div>';
+      return;
     }
+    gal.innerHTML = '<div class="gal-title">Select a PO / container above to see its photos</div>';
+    var norm = function (x) { return String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    pcList(code).then(function (root) {
+      var folders = (root.folders || []).filter(function (f) { return !/^COA/i.test(f.name); });
+      var hit = 0;
+      box.querySelectorAll('.pocell').forEach(function (cell) {
+        var k = +cell.getAttribute('data-k');
+        var keys = [pos[k] || pos[0], conts[k]].map(norm).filter(Boolean);
+        var f = folders.filter(function (x) { return keys.some(function (q) { return norm(x.name).indexOf(q) >= 0; }); })[0]
+          || (folders.length === 1 && n === 1 ? folders[0] : null);
+        if (!f) return;
+        hit++;
+        cell.classList.add('has-photo');
+        cell.title = 'Click to view photos — ' + f.name;
+        cell.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          box.querySelectorAll('.pocell').forEach(function (c) { c.classList.remove('sel'); });
+          cell.classList.add('sel');
+          gal.innerHTML = '<div class="galbox"></div>';
+          renderGallery(gal.querySelector('.galbox'), (pos[k] || pos[0] || '') + (conts[k] ? ' (' + conts[k] + ')' : ''), code, f.name);
+        });
+      });
+      if (!hit) gal.innerHTML = '<div class="gal-title dim">No container photo folders for ' + esc(m.booking) + '</div>';
+    }).catch(function (e) { gal.innerHTML = '<div class="gal-title warn">photos unavailable — ' + esc(e.message || e) + '</div>'; });
   }
 
   /* 표 컨테이너에 클릭 위임 바인딩 (innerHTML 교체와 무관하게 1회만) */
@@ -846,15 +860,21 @@
       el.addEventListener('click', function (ev) {
         var target = ev.target || ev.srcElement;
         if (!target || typeof target.closest !== 'function') return;
+        if (target.closest('tr.au-detail-row') || target.closest('button, a, input, select')) return;
         var tr = target.closest('tr');
         if (!tr || !el.contains(tr)) return;
         var tbody = tr.parentNode;
         if (!tbody || (tbody.tagName || '').toUpperCase() !== 'TBODY') return;
         var trs = tbody.rows || tbody.getElementsByTagName('tr');
         var idx = -1;
-        for (var i = 0; i < trs.length; i++) { if (trs[i] === tr) { idx = i; break; } }
+        var seen = 0;   /* 펼친 상세 줄(au-detail-row)은 순서에서 뺀다 */
+        for (var i = 0; i < trs.length; i++) {
+          if (trs[i].classList.contains('au-detail-row')) continue;
+          if (trs[i] === tr) { idx = seen; break; }
+          seen++;
+        }
         if (idx < 0) return;
-        pickAuRow(idx);
+        pickAuRow(idx, tr);
       });
     });
   }

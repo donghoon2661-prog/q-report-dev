@@ -403,7 +403,7 @@ function buildQuality(){
     chart=new Chart(document.getElementById('chart'),{
       data:{labels:lots,datasets:ds},
       options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{backgroundColor:qvar('panel','#12161E'),borderColor:qvar('line2','#2A3446'),borderWidth:1,
+        plugins:{legend:{display:false},tooltip:{backgroundColor:qvar('panel','#12161E'),borderColor:qvar('line2','#2A3446'),borderWidth:1,titleColor:qvar('text','#E7ECF3'),bodyColor:qvar('text','#E7ECF3'),footerColor:qvar('muted','#7E8AA0'),
           callbacks:{title:c=>t('lot')+' '+lots[c[0].dataIndex]+' ('+lotMonth(lots[c[0].dataIndex])+(LANG==='en'?' mfg':' 제조')+')'}}},
         scales:{x:{grid:{color:qvar('line','#1A2130')}},
                 y:{grid:{color:qvar('line','#1A2130')},title:{display:true,text:itemName(curItem)+(curItem.unit?' ('+curItem.unit+')':'')+(LANG==='en'?' — Spec: ':' — 스펙: ')+itemSpecTxt(curItem),color:'#7E8AA0',font:{size:11}}}}

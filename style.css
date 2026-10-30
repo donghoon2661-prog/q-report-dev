@@ -975,12 +975,16 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 #qview .adv-more p{font-size:11.5px}
 #qview .adv-key{margin-left:auto;font-size:10px;color:var(--blue);border:1px solid var(--line2);border-radius:5px;padding:3px 8px}
 @media (max-width:900px){#qview .advice{margin:0 10px 12px}}
-/* 해외 상세(#side) 컨테이너 사진 (S4) */
-#side .au-photos{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
-#side .au-ph+.au-ph{margin-top:12px}
-#side .au-ph .pogrid{grid-template-columns:repeat(2,1fr);margin:6px 0}
-#side .au-ph .gal{grid-template-columns:repeat(3,1fr)}
 #side .galbox:empty{display:none}
 /* 호주 표 행: 미국 표처럼 누를 수 있다는 표시 (누르면 상세·사진) */
 #au-map tbody tr,#au-list tbody tr{cursor:pointer}
 #au-map tbody tr:hover,#au-list tbody tr:hover{background:rgba(255,255,255,.03)}
+/* 누른 행 바로 아래 상세(미국 #popanel과 같은 모양) */
+tr.au-detail-row,tr.au-detail-row:hover{cursor:default;background:transparent!important}
+tr.au-detail-row>td{padding:0 12px 14px}
+.au-inline{position:relative;border:1px solid var(--sail);background:var(--hull);padding:16px;text-align:left}
+.au-inline h3{margin:0 0 2px}
+.au-inline .sb{margin-bottom:12px}
+.au-inline .close{position:absolute;top:12px;right:12px;width:32px;height:28px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.au-inline .pocell{cursor:default}.au-inline .pocell.has-photo{cursor:pointer}
+tr.au-open{background:rgba(63,208,166,.06)}

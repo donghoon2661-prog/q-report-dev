@@ -446,8 +446,8 @@ function showChangelog(){
   box.addEventListener("click",e=>{ if(e.target===box) box.hidden = true; },{once:true});
 }
 
-/* ---------- Restore ---------- */
-const BACKUP_API = "https://api.github.com/repos/donghoon2661-prog/q-report/contents/backups";
+/* ---------- Restore ----------
+   2026-11-04: 백업은 공개 저장소에 두지 않고 Worker KV 사본(/backups 목록, /restore)만 쓴다. */
 
 async function showRestoreModal(){
   if(ACCESS_ROLE !== "admin") return;
@@ -466,20 +466,21 @@ async function showRestoreModal(){
   document.getElementById("rm-cancel").addEventListener("click",()=>{ modal.hidden=true; });
   modal.addEventListener("click",e=>{ if(e.target===modal) modal.hidden=true; });
 
-  let files;
+  let dates;
   try{
-    const r = await fetch(BACKUP_API);
-    if(!r.ok) throw new Error("GitHub API " + r.status);
-    files = await r.json();
+    const key = await getKey();
+    if(!key) throw new Error("refresh key 없음");
+    const r = await fetch(API.replace("/data","/backups"), { cache:"no-store", headers:{"X-Refresh-Key":key} });
+    if(r.status === 401 && typeof forgetKey === "function") forgetKey();
+    if(!r.ok) throw new Error("Worker " + r.status);
+    dates = (await r.json()).dates || [];
   } catch(e){
     document.getElementById("rm-list").innerHTML =
       `<div style="padding:14px;font-size:11px;color:var(--buoy)">목록 불러오기 실패: ${e.message}</div>`;
     return;
   }
 
-  const backups = files
-    .filter(f => /^backup-\d{4}-\d{2}-\d{2}\.json$/.test(f.name))
-    .sort((a,b) => b.name.localeCompare(a.name));
+  const backups = dates.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse();
 
   if(!backups.length){
     document.getElementById("rm-list").innerHTML =
@@ -488,10 +489,8 @@ async function showRestoreModal(){
   }
 
   let selectedDate = null;
-  document.getElementById("rm-list").innerHTML = backups.map(f=>{
-    const date = f.name.replace("backup-","").replace(".json","");
-    return `<button class="rm-item" data-date="${date}">${date}</button>`;
-  }).join("");
+  document.getElementById("rm-list").innerHTML = backups.map(date=>
+    `<button class="rm-item" data-date="${date}">${date}</button>`).join("");
 
   document.querySelectorAll(".rm-item").forEach(btn=>{
     btn.addEventListener("click",()=>{

@@ -85,7 +85,9 @@
 
     function beginLoad(stem) {
       var load = { stem: stem, promise: null };
-      load.promise = pdfjs.getDocument(CoaPages.coaPdfUrl(apiRoot, stem)).promise.then(function (doc) {
+      // 2026-11-04: /coa-pdf 도 로그인 토큰이 있어야 열린다(config.js authHeaderObj).
+      var headers = typeof authHeaderObj === 'function' ? authHeaderObj() : {};
+      load.promise = pdfjs.getDocument({ url: CoaPages.coaPdfUrl(apiRoot, stem), httpHeaders: headers }).promise.then(function (doc) {
         if (pendingLoads[stem] === load) delete pendingLoads[stem];
         if (activeLoad === load) {
           if (cachedDoc) cachedDoc.destroy();

@@ -1,6 +1,7 @@
 /* ── Kossan OQC · QUALITY ANALYSIS ─────────────────────────────────────────
-   COA 원본 데이터는 이 파일에 없다. data/coa/index.json 에 나열된 JSON들을
-   불러와 조립한다. 새 COA 추가 = JSON 파일 1개 + index.json 에 한 줄.
+   COA 원본 데이터는 이 파일에 없다. Worker /coa?file=index.json 에 나열된 JSON들을
+   불러와 조립한다(KV "coa:json:<파일>", 2026-11-04 전에는 저장소 data/coa).
+   새 COA 추가 = KV 에 JSON 1개 + index.json 에 한 줄(tools/coa/coa_upload_kv.py).
    이 파일(로직)은 건드릴 필요 없음.
    ───────────────────────────────────────────────────────────────────────── */
 
@@ -39,7 +40,8 @@ function coaPanelClose(){ if(coaPanel) coaPanel.close(); }
 function itemName(it){ return LANG==='en' && it.name_en ? it.name_en : it.name; }
 function itemSpecTxt(it){ return LANG==='en' && it.specTxt_en ? it.specTxt_en : it.specTxt; }
 
-const COA_DIR = 'data/coa/';
+/* 2026-11-04: COA JSON 은 저장소(Pages)에 두지 않고 Worker GET /coa?file=<파일> 로 받는다(로그인 토큰 필요) */
+const coaUrl = file => API_ROOT + '/coa?file=' + encodeURIComponent(file);
 let DATA = { sheets: [], detections: [] };
 
 /* ── SHIPMENT ↔ QUALITY 연결 (2026-10-30) ──
@@ -120,12 +122,12 @@ function resolvedReasonText(d){
 
 /* index.json → 각 시트 JSON 병렬 로드 → DATA 형태로 조립 */
 async function loadCOA(){
-  const ir = await fetch(COA_DIR + 'index.json', {cache:'no-store'});
+  const ir = await fetch(coaUrl('index.json'), {cache:'no-store'});
   if(!ir.ok) throw new Error('index.json ' + ir.status);
   const idx = await ir.json();
   const list = Array.isArray(idx.sheets) ? idx.sheets : [];
   const results = await Promise.allSettled(list.map(async e => {
-    const r = await fetch(COA_DIR + e.file, {cache:'no-store'});
+    const r = await fetch(coaUrl(e.file), {cache:'no-store'});
     if(!r.ok) throw new Error(e.file + ' ' + r.status);
     const j = await r.json();
     return { name: j.name || e.name, sectors: j.sectors || [], detections: j.detections || [], file: e.file, pdf: !!e.pdf };
@@ -158,7 +160,7 @@ function coaError(msg){
   const c = document.getElementById('chips');
   if(c) c.innerHTML = '<span class="chip alert">COA 데이터 로드 실패<b>!</b></span>';
   const l = document.getElementById('left');
-  if(l) l.innerHTML = '<div class="empty-note">' + msg + '<br>data/coa/ 경로와 index.json을 확인하세요.</div>';
+  if(l) l.innerHTML = '<div class="empty-note">' + msg + '<br>Worker /coa?file=index.json 응답을 확인하세요.</div>';
   console.error('[quality] COA load failed:', msg);
 }
 

@@ -943,7 +943,7 @@ const AUTH_KEY = "kossan_auth_ts";
 const ROLE_KEY = "kossan_role";
 const AUTH_TTL_MS = 5*60*1000;
 let ACCESS_ROLE = "kossan";
-const ROLE_PW = {}; /* removed from history 2026-11-04 */
+/* 2026-11-04: 비밀번호는 Worker(/login)가 확인한다. 역할도 Worker 가 정해서 돌려준다(config.js 토큰). */
 
 function applyRoleRestrictions(){
   const shipTile  = document.querySelector('.tile[data-go="ship"]');
@@ -991,6 +991,8 @@ function proceedAfterUnlock(){
   applyRoleRestrictions();
   /* 방금 로그인한 역할을 호주 관리자 버튼(ADD/EDIT)에 즉시 반영 — country-form.js 가 이미 로드돼 있을 때만 */
   try{ if(window.CountryForm && typeof window.CountryForm.syncAdmin==="function") window.CountryForm.syncAdmin(); }catch(_){}
+  /* 2026-11-04: 로그인 전에 부른 /ais 는 401 이라, 방금 로그인했으면 호주 선적을 다시 받는다(자동 로그인 때는 CountryUI 가 아직 없음) */
+  try{ if(window.CountryUI && typeof window.CountryUI.refresh==="function") window.CountryUI.refresh(); }catch(_){}
   const lo = document.getElementById("logout-btn");
   if(lo) lo.hidden = false;
   if(ACCESS_ROLE === "qc"){
@@ -1025,11 +1027,31 @@ function fetchAndRender(attempt){
     });
 }
 
-function unlock(){
+let unlocking = false;
+async function unlock(){
+  if(unlocking) return;
   const val = document.getElementById("pw").value.trim();
-  const role = Object.keys(ROLE_PW).find(k => ROLE_PW[k] === val);
-  if(!role){ document.getElementById("gate-err").textContent="Incorrect password."; return; }
-  try{ localStorage.setItem(AUTH_KEY, String(Date.now())); localStorage.setItem(ROLE_KEY, role); }catch(_){}
+  const err = document.getElementById("gate-err");
+  if(!val){ err.textContent="Incorrect password."; return; }
+  unlocking = true; err.textContent = "";
+  let res = null, status = 0;
+  try{
+    const r = await fetch(API_ROOT + "/login", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ password: val }) });
+    status = r.status;
+    res = await r.json().catch(()=>null);
+  }catch(_){ status = -1; }
+  unlocking = false;
+  if(status !== 200 || !res || !res.token){
+    err.textContent = status === 401 ? "Incorrect password."
+      : status === 429 ? "Too many attempts. Try again in 15 minutes."
+      : "Login server unavailable. Try again.";
+    return;
+  }
+  try{
+    localStorage.setItem(TOKEN_KEY, res.token); localStorage.setItem(TOKEN_EXP_KEY, String(res.exp));
+    localStorage.setItem(AUTH_KEY, String(Date.now())); localStorage.setItem(ROLE_KEY, res.role);
+  }catch(_){}
   proceedAfterUnlock();
 }
 
@@ -1044,7 +1066,7 @@ document.getElementById("gate-go").addEventListener("click",unlock);
 document.getElementById("pw").addEventListener("keydown",e=>{if(e.key==="Enter")unlock();});
 document.getElementById("pw").focus();
 document.getElementById("logout-btn").addEventListener("click",()=>{
-  try{ localStorage.removeItem(AUTH_KEY); localStorage.removeItem(ROLE_KEY); }catch(_){}
+  clearAuth();
   location.reload();
 });
 document.getElementById("mobile-system-btn").addEventListener("click",()=>setView('system'));
@@ -1084,7 +1106,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 (function tryAutoUnlock(){
   let ts = null;
   try{ ts = parseInt(localStorage.getItem(AUTH_KEY)||"0",10); }catch(_){}
-  if(ts && (Date.now()-ts) < AUTH_TTL_MS){ proceedAfterUnlock(); }
+  if(ts && (Date.now()-ts) < AUTH_TTL_MS && authToken()){ proceedAfterUnlock(); }
 })();
 
 /* ===== 세계 시계 (전역) ===== */

@@ -11,71 +11,60 @@ const DEBUG_API = API_ROOT + "/debug";
 const SYSTEM_API = API_ROOT + "/lastrun";
 const source = () => API || "shipments.json";
 
+/* ---------- 로그인 토큰 (2026-11-04) ----------
+   비밀번호는 Worker POST /login 이 확인하고 토큰을 준다(프런트에는 비밀번호가 없다).
+   API_ROOT 로 가는 fetch 에는 토큰을 자동으로 붙인다. Worker 가 "Login required"(401)를 주면
+   토큰이 만료·무효인 것이라 로그인 정보를 지우고 첫 화면(비밀번호 창)으로 돌아간다. */
+const TOKEN_KEY = "kossan_token";
+const TOKEN_EXP_KEY = "kossan_token_exp";
+function authToken(){
+  try{
+    const t = localStorage.getItem(TOKEN_KEY), exp = +localStorage.getItem(TOKEN_EXP_KEY) || 0;
+    return t && exp > Date.now() ? t : null;
+  }catch(_){ return null; }
+}
+function clearAuth(){
+  try{ ["kossan_auth_ts", "kossan_role", TOKEN_KEY, TOKEN_EXP_KEY].forEach(k => localStorage.removeItem(k)); }catch(_){}
+}
+function authHeaderObj(){ const t = authToken(); return t ? { Authorization: "Bearer " + t } : {}; }
+(function(){
+  const rawFetch = window.fetch.bind(window);
+  let bounced = false;
+  window.fetch = function(input, init){
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    if(url.indexOf(API_ROOT) !== 0 || url.split("?")[0] === API_ROOT + "/login") return rawFetch(input, init);
+    const headers = new Headers((init && init.headers) || {});
+    const t = authToken();
+    if(t && !headers.has("Authorization")) headers.set("Authorization", "Bearer " + t);
+    return rawFetch(input, Object.assign({}, init, { headers })).then(r => {
+      if(r.status === 401 && t && !bounced){   // 토큰을 보냈는데 거절됐을 때만(로그인 전 요청은 그냥 401)
+        r.clone().json().then(j => {
+          if(j && j.error === "Login required" && !bounced){ bounced = true; clearAuth(); location.reload(); }
+        }).catch(()=>{});
+      }
+      return r;
+    });
+  };
+  /* COA 원문 PDF 새 탭 링크(/coa-pdf): 링크로는 토큰을 못 보내므로 받아서 blob 으로 연다 */
+  document.addEventListener("click", e => {
+    const a = e.target && e.target.closest && e.target.closest("a[href]");
+    if(!a || a.href.indexOf(API_ROOT + "/coa-pdf") !== 0) return;
+    e.preventDefault();
+    const hash = a.href.indexOf("#") >= 0 ? a.href.slice(a.href.indexOf("#")) : "";
+    const w = window.open("", "_blank");
+    window.fetch(a.href.split("#")[0], { cache: "no-store" })
+      .then(r => r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status)))
+      .then(b => { const u = URL.createObjectURL(b); if(w) w.location.href = u + hash; else location.href = u + hash; })
+      .catch(err => { if(w) w.close(); alert("PDF open failed: " + err.message); });
+  }, true);
+})();
+
 /* Worker와 프론트 공통 지연 기준 */
 const DELAY_WATCH_D = 3;
 const DELAY_ALERT_D = 7;
 
-const FALLBACK = {
-  updated:"2026-08-03 10:12",
-  shipments:[
-    { booking:"KULM68088700", vessel:"CONTI CONQUEST", voyage:"0036E", svc:"PS3",
-      feeder:"HMM MONGLA 0033N", imo:9293818,
-      polDep:"2026-07-06T00:56", tsArr:"2026-07-07T23:13", tsDep:"2026-07-14T11:28", eta:"2026-08-08T07:00",
-      names:["PORT KLANG","SINGAPORE","BA RIA VUNG TAU","YANTIAN","LOS ANGELES"],
-      route:[[2.9372384,101.3007552],[1.2511247,103.7272898],[10.5372748,107.0315867],
-             [22.5703753,114.2596394],[33.76478926,-118.2680205]],
-      idx:3, ratio:0.6826,
-      pos:["FNG031006 (Container 2 of 18)","FNG031006 (Container 3 of 18)","FNG031006 (Container 4 of 18)","FNG031006 (Container 5 of 18)","FNG031006 (Container 6 of 18)","FNG031006 (Container 7 of 18)","FNG031006 (Container 8 of 18)","FNG031006 (Container 9 of 18)","FNG031006 (Container 10 of 18)","FNG031006 (Container 11 of 18)","FNG031006 (Container 12 of 18)","FNG031006 (Container 13 of 18)","FNG031006 (Container 14 of 18)","FNG031006 (Container 15 of 18)"], poEta:"2026-08-09",
-      last:"Jul 14 departed Singapore · Jul 22 departed Yantian" },
-    { booking:"KULM75953600", vessel:"HYUNDAI PLUTO", voyage:"0047E", svc:"PS3",
-      feeder:"HR RHEA 0110N", imo:9725160,
-      polDep:"2026-07-22T20:30", tsArr:"2026-07-26T02:53", tsDep:"2026-07-29T06:59", eta:"2026-08-24T07:00",
-      names:["PORT KLANG","SINGAPORE","BA RIA VUNG TAU","YANTIAN","LOS ANGELES"],
-      route:[[2.9372384,101.3007552],[1.2511247,103.7272898],[10.5372748,107.0315867],
-             [22.5703753,114.2596394],[33.76478926,-118.2680205]],
-      idx:2, ratio:0.2374,
-      pos:["FNG031006 (Container 16 of 18)","FNG031006 (Container 17 of 18)","FNG031006 (Container 18 of 18)","FNG031007 (Container 1 of 18)","FNG031007 (Container 2 of 18)","FNG031007 (Container 3 of 18)","FNG031007 (Container 4 of 18)","FNG031007 (Container 5 of 18)","FNG031007 (Container 6 of 18)","FNG031007 (Container 7 of 18)","FNG031007 (Container 8 of 18)","FNG031007 (Container 9 of 18)","FNG031007 (Container 10 of 18)","FNG031007 (Container 11 of 18)"], poEta:"2026-08-16",
-      last:"Jul 29 departed Singapore · Cai Mep → Yantian leg" },
-    { booking:"KULM40326600", vessel:"HANS SCHULTE", voyage:"0001E", svc:"PS5",
-      feeder:"HR HERA 0110N", imo:9531909,
-      polDep:"2026-07-29T12:00", tsArr:"2026-07-31T11:03", tsDep:"2026-08-07T09:30", eta:"2026-08-26T17:00",
-      names:["PORT KLANG","SINGAPORE","BA RIA VUNG TAU","LOS ANGELES"],
-      route:[[2.9372384,101.3007552],[1.2511247,103.7272898],[10.5372748,107.0315867],
-             [33.76478926,-118.2680205]],
-      idx:1, ratio:0,
-      pos:["FNG031007 (Container 12 of 18)","FNG031007 (Container 13 of 18)","FNG031007 (Container 14 of 18)","FNG031007 (Container 15 of 18)","FNG031007 (Container 16 of 18)","FNG031007 (Container 17 of 18)","FNG031007 (Container 18 of 18)","FNG031008 (Container 1 of 15)","FNG031008 (Container 2 of 15)","FNG031008 (Container 3 of 15)","FNG031008 (Container 4 of 15)","FNG031008 (Container 5 of 15)","FNG031008 (Container 6 of 15)","FNG031008 (Container 7 of 15)"], poEta:"2026-08-23",
-      poNote:"Source lists two ETAs for this lot (23-Aug and 27-Aug). The earlier date is shown.",
-      last:"Jul 31 feeder discharged at Singapore · awaiting mother vessel" },
-    { booking:"KULM85176300", vessel:"HMM JAKARTA", voyage:"0145E", svc:"PS5",
-      feeder:"HR HERA 0110N", imo:9323522,
-      polDep:"2026-07-29T12:00", tsArr:"2026-07-31T11:11", tsDep:"2026-08-08T03:00", eta:"2026-09-01T04:30",
-      names:["PORT KLANG","SINGAPORE","BA RIA VUNG TAU","HAI PHONG","LOS ANGELES"],
-      route:[[2.9372384,101.3007552],[1.2511247,103.7272898],[10.5372748,107.0315867],
-             [20.796246,106.9065732],[33.76478926,-118.2680205]],
-      idx:1, ratio:0,
-      pos:["FNG031008 (Container 8 of 15)","FNG031008 (Container 9 of 15)","FNG031008 (Container 10 of 15)","FNG031008 (Container 11 of 15)","FNG031008 (Container 12 of 15)","FNG031008 (Container 13 of 15)","FNG031008 (Container 14 of 15)","FNG031008 (Container 15 of 15)","FNG031009 (Container 1 of 15)","FNG031009 (Container 2 of 15)","FNG031009 (Container 3 of 15)","FNG031009 (Container 4 of 15)","FNG031009 (Container 5 of 15)","FNG031009 (Container 6 of 15)"], poEta:"2026-09-03",
-      last:"Jul 31 feeder discharged at Singapore · awaiting mother vessel" },
-    { booking:"KULM72444200", vessel:"YM MODERATION", voyage:"0084E", svc:"PS5",
-      feeder:"NZ SUZHOU 0015N", imo:9664897,
-      polDep:"2026-08-02T12:00", tsArr:"2026-08-04T04:45", tsDep:"2026-08-19T15:30", eta:"2026-09-13T17:00",
-      names:["PORT KLANG","SINGAPORE","BA RIA VUNG TAU","HAI PHONG","LOS ANGELES"],
-      route:[[2.9372384,101.3007552],[1.2511247,103.7272898],[10.5372748,107.0315867],
-             [20.796246,106.9065732],[33.76478926,-118.2680205]],
-      idx:0, ratio:0,
-      pos:["FNG031009 (Container 7 of 15)","FNG031009 (Container 8 of 15)","FNG031009 (Container 9 of 15)","FNG031009 (Container 10 of 15)","FNG031009 (Container 11 of 15)","FNG031009 (Container 12 of 15)","FNG031009 (Container 13 of 15)","FNG031009 (Container 14 of 15)","FNG031009 (Container 15 of 15)","FNG031010 (Container 1 of 15)","FNG031010 (Container 2 of 15)","FNG031010 (Container 3 of 15)","FNG031010 (Container 4 of 15)","FNG031010 (Container 5 of 15)"], poEta:"2026-09-06",
-      poNote:"These 14 containers are split across 3 feeder/mother combinations (ONE PREMIUM 0093E ×2, YM MODERATION 0084E). The per-container split is not specified in the source.",
-      last:"Aug 2 feeder loaded at Port Klang · Singapore ETA Aug 4" },
-    { booking:"KULM92606700", vessel:"HYUNDAI TOKYO", voyage:"0164E", svc:"PS5",
-      feeder:"HR RHEA 0109N", imo:null,
-      polDep:"2026-07-03T12:00", tsArr:"2026-07-05T18:36", tsDep:"2026-07-18T21:45", eta:"2026-08-13T04:00",
-      names:["PORT KLANG","SINGAPORE","SINGAPORE","BA RIA VUNG TAU","HAI PHONG","LOS ANGELES"],
-      route:[[2.9372384,101.3007552],[1.2511247,103.7272898],[1.3115724,103.7188794],
-             [10.5372748,107.0315867],[20.796246,106.9065732],[33.76478926,-118.2680205]],
-      idx:4, ratio:0.4205,
-      pos:["FNG031005 (Container 6 of 18)","FNG031005 (Container 7 of 18)","FNG031005 (Container 8 of 18)","FNG031005 (Container 9 of 18)","FNG031005 (Container 10 of 18)","FNG031005 (Container 11 of 18)","FNG031005 (Container 12 of 18)","FNG031005 (Container 13 of 18)","FNG031005 (Container 14 of 18)","FNG031005 (Container 15 of 18)","FNG031005 (Container 16 of 18)","FNG031005 (Container 17 of 18)","FNG031005 (Container 18 of 18)","FNG031006 (Container 1 of 18)"], poEta:"2026-08-02",
-      last:"Jul 18 departed Singapore · Hai Phong → LA leg" }
-  ]
-};
+/* Live API 를 못 받을 때 보여 줄 값. 예전에는 실제 선적 6건을 넣어 두었으나 공개 저장소라 비웠다(2026-11-04). */
+const FALLBACK = { updated: null, shipments: [] };
 
 /* ---------- 항구명 정규화 ---------- */
 const shortPort = n => !n ? "" : String(n).split(",")[0].replace(/\s+/g," ").trim().toUpperCase();

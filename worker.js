@@ -1927,12 +1927,81 @@ async function collectMaps(env, forceBkg = []) {
 /* ---------- 라우팅 ---------- */
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, X-Refresh-Key",
+  "Access-Control-Allow-Headers": "Content-Type, X-Refresh-Key, Authorization",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
 const JH = { "Content-Type": "application/json; charset=utf-8", ...CORS };
 const json = (o, s = 200) => new Response(JSON.stringify(o, null, 1), { status: s, headers: JH });
-const auth = (req, env) => req.headers.get("X-Refresh-Key") === env.REFRESH_KEY;
+const auth = (req, env) => !!env.REFRESH_KEY && req.headers.get("X-Refresh-Key") === env.REFRESH_KEY;
+
+/* ── 로그인 (2026-11-04) ─────────────────────────────────────────────
+   예전에는 비밀번호를 app.js 에서만 확인해서 Worker 주소를 직접 치면 데이터가 그대로 나갔다.
+   이제 비밀번호는 Worker secret PW_ADMIN·PW_KOSSAN·PW_ETA·PW_QC 에만 두고,
+   POST /login {password} 가 맞으면 토큰을 준다. 토큰 = base64url({r:역할, exp}) + "." + HMAC-SHA256(SESSION_SECRET).
+   데이터 경로는 전부 Authorization: Bearer <토큰> 또는 X-Refresh-Key 가 있어야 열린다(fetch 첫머리 참고).
+   비밀번호 실패는 IP마다 15분에 10번까지(KV "loginfail:<ip>", TTL 15분). */
+const ROLE_SECRETS = { admin: "PW_ADMIN", kossan: "PW_KOSSAN", eta: "PW_ETA", qc: "PW_QC" };
+const SESSION_TTL_MS = 12 * 3600 * 1000;
+const LOGIN_FAIL_MAX = 10, LOGIN_FAIL_TTL = 900;
+const enc = new TextEncoder();
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64urlText = (s) => b64url(enc.encode(s));
+const unb64urlText = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)));
+async function hmac(env, text) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(env.SESSION_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64url(await crypto.subtle.sign("HMAC", key, enc.encode(text)));
+}
+async function sameText(a, b) {
+  /* 길이가 달라도 시간이 같게: 둘 다 SHA-256 으로 바꿔 비교 */
+  const [x, y] = await Promise.all([a, b].map(s => crypto.subtle.digest("SHA-256", enc.encode(String(s)))));
+  return crypto.subtle.timingSafeEqual(x, y);
+}
+async function makeToken(env, role) {
+  const exp = Date.now() + SESSION_TTL_MS;
+  const body = b64urlText(JSON.stringify({ r: role, exp }));
+  return { token: body + "." + await hmac(env, body), role, exp };
+}
+/* 토큰이 맞으면 역할 이름, 아니면 null */
+async function sessionRole(req, env) {
+  if (!env.SESSION_SECRET) return null;
+  const m = /^Bearer\s+([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(req.headers.get("Authorization") || "");
+  if (!m) return null;
+  if (!(await sameText(m[2], await hmac(env, m[1])))) return null;
+  let p;
+  try { p = JSON.parse(unb64urlText(m[1])); } catch (_) { return null; }
+  if (!p || !ROLE_SECRETS[p.r] || !(p.exp > Date.now())) return null;
+  return p.r;
+}
+async function handleLogin(req, env) {
+  if (!env.SESSION_SECRET) return json({ error: "Login is not configured" }, 503);
+  const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+  const failKey = "loginfail:" + ip;
+  const fails = parseInt((await env.OQC.get(failKey)) || "0", 10) || 0;
+  if (fails >= LOGIN_FAIL_MAX) return json({ error: "Too many attempts. Try again in 15 minutes." }, 429);
+  let body;
+  try { body = await req.json(); } catch (_) { return json({ error: "JSON parse failed" }, 400); }
+  const pw = String((body && body.password) || "");
+  let role = null;
+  for (const [r, name] of Object.entries(ROLE_SECRETS)) {
+    if (env[name] && pw && await sameText(pw, env[name])) { role = r; break; }
+  }
+  if (!role) {
+    await env.OQC.put(failKey, String(fails + 1), { expirationTtl: LOGIN_FAIL_TTL });
+    return json({ error: "Incorrect password." }, 401);
+  }
+  return json(await makeToken(env, role));
+}
+
+/* 공개 달력(calendar-public.html, 위클리 메일 링크)용: 달력에 그리는 칸만 내보낸다(PO·컨테이너·지도 없음) */
+const CALENDAR_FIELDS = ["booking", "vessel", "voyage", "polDep", "eta", "destEta", "etaActual",
+  "firstSeenEta", "firstSeenPolDep", "alert", "delayDays", "etaChangeCount", "polDepChangeCount"];
+
+/* COA 사이트 JSON (2026-11-04): 예전 Pages data/coa/<파일> 을 KV "coa:json:<파일>" 로 옮겼다. index.json 포함. */
+const COA_JSON_RE = /^[A-Za-z0-9_\-.]{3,90}\.json$/;
+
+/* KV 백업 사본 (/backup?save=1 → /backups, /restore) */
+const BACKUP_PREFIX = "backup:";
+const BACKUP_KEEP_DAYS = 60;
 const BKG_RE = /^[A-Z]{4}\d{8}$/;
 const stampNow = () => new Date().toISOString();
 
@@ -2987,6 +3056,29 @@ export default {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
+  /* ── 로그인·접근 차단 (2026-11-04) ── 열린 곳은 셋뿐: 로그인, 폰 tracker(자기 키), 공개 달력.
+     나머지는 로그인 토큰이나 X-Refresh-Key 가 있어야 한다. 쓰기 경로의 X-Refresh-Key 검사는 그대로 남아 있다. */
+  if (url.pathname === "/login" && req.method === "POST") return handleLogin(req, env);
+  const openPath = (url.pathname === "/tracker" && req.method === "POST") ||
+                   (url.pathname === "/public/calendar" && req.method === "GET");
+  if (!openPath && !auth(req, env) && !(await sessionRole(req, env)))
+    return json({ error: "Login required" }, 401);
+
+  if (url.pathname === "/public/calendar" && req.method === "GET") {
+    const assembled = await assembleShipments(env);
+    const shipments = assembled.shipments.map(s => Object.fromEntries(CALENDAR_FIELDS.map(k => [k, s[k] ?? null])));
+    return json({ updated: (assembled.saved && assembled.saved.updated) || null, shipments });
+  }
+
+  /* COA 사이트 JSON: GET /coa?file=index.json | <시트>.json */
+  if (url.pathname === "/coa" && req.method === "GET") {
+    const file = String(url.searchParams.get("file") || "");
+    if (!COA_JSON_RE.test(file)) return json({ error: "bad file" }, 400);
+    const v = await env.OQC.get("coa:json:" + file);
+    if (v === null) return json({ error: "COA file not found" }, 404);
+    return new Response(v, { headers: { ...JH, "Cache-Control": "private, no-store" } });
+  }
+
   /* ── COA 원문 PDF (QUALITY 백데이터 창) ───────────────────────────
      GET /coa-pdf?sheet=<data/coa 파일 이름(확장자 제외)> → KV "coa:file:<sheet>" 의 PDF 만 내려준다.
      PDF 는 tools/coa 처리기가 미리 올린다. pCloud 폴더 링크(인보이스 등 다른 파일이 같이 있음)는 쓰지 않고,
@@ -3739,7 +3831,22 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       return json({ count: log.length, log: [...log].reverse() });
     }
 
-    /* ── /backup : KV 전체 스냅샷 반환 (GitHub Actions 주간 백업용, X-Refresh-Key 인증) ── */
+    /* ── /backups : KV 에 저장된 백업 날짜 목록 (SYSTEM 탭 RESTORE 창, X-Refresh-Key) ── */
+    if (url.pathname === "/backups" && req.method === "GET") {
+      if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
+      const dates = [];
+      let c = undefined;
+      do {
+        const r = await env.OQC.list({ prefix: BACKUP_PREFIX, ...(c ? { cursor: c } : {}) });
+        for (const k of r.keys) dates.push(k.name.slice(BACKUP_PREFIX.length));
+        c = r.list_complete ? undefined : r.cursor;
+      } while (c);
+      return json({ dates: dates.sort().reverse() });
+    }
+
+    /* ── /backup : KV 전체 스냅샷 반환 (GitHub Actions 매일 백업용, X-Refresh-Key 인증)
+       ?save=1 이면 같은 내용을 KV "backup:<UTC 날짜>" 에도 남긴다(BACKUP_KEEP_DAYS 뒤 자동 삭제).
+       2026-11-04부터 백업 파일을 공개 저장소에 올리지 않으므로 /restore 는 이 KV 사본에서 복원한다. ── */
     if (url.pathname === "/backup") {
       if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
       const keys = ["shipments","bookings","pomap","poeta","pophoto","history","alertstate","lastrun","cursor","sessionLog","raw_material_history"];
@@ -3748,8 +3855,8 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
         const v = await env.OQC.get(k, "text");
         if (v !== null) try { kv[k] = JSON.parse(v); } catch { kv[k] = v; }
       }
-      /* delayHistory:YYYY-MM, schedule:{bkg}, map:{bkg} 키도 수집 — cursor pagination */
-      for (const prefix of ["delayHistory:", "schedule:", "map:"]) {
+      /* delayHistory:YYYY-MM, schedule:{bkg}, map:{bkg}, coa:json:<파일> 키도 수집 — cursor pagination */
+      for (const prefix of ["delayHistory:", "schedule:", "map:", "coa:json:"]) {
         let bCursor = undefined, bComplete = false;
         while (!bComplete) {
           const bRes = await env.OQC.list({ prefix, ...(bCursor ? { cursor: bCursor } : {}) });
@@ -3761,10 +3868,15 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
           else { bCursor = bRes.cursor; }
         }
       }
-      return json({ backupAt: stampNow(), kv });
+      const out = { backupAt: stampNow(), kv };
+      if (url.searchParams.get("save") === "1") {
+        await env.OQC.put(BACKUP_PREFIX + out.backupAt.slice(0, 10), JSON.stringify(out),
+          { expirationTtl: BACKUP_KEEP_DAYS * 86400 });
+      }
+      return json(out);
     }
 
-    /* ── /restore : 날짜 지정 → GitHub에서 백업 fetch → KV 복원 (X-Refresh-Key 인증) ── */
+    /* ── /restore : 날짜 지정 → KV "backup:<날짜>" 사본 → KV 복원 (X-Refresh-Key 인증) ── */
     if (url.pathname === "/restore" && req.method === "POST") {
       if (!auth(req, env)) return json({ error: "Authentication failed" }, 401);
       let body;
@@ -3772,14 +3884,12 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
       const date = (body.date || "").trim(); // "YYYY-MM-DD" 형식
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "date must be YYYY-MM-DD" }, 400);
 
-      /* GitHub raw URL — public 리포이므로 토큰 불필요. 저장소는 env.GITHUB_REPO(MAIN/DEV 각자)로 분리 */
-      const repo = env.GITHUB_REPO || "donghoon2661-prog/q-report";
-      const rawUrl = `https://raw.githubusercontent.com/${repo}/main/backups/backup-${date}.json`;
-      const ghRes = await fetch(rawUrl);
-      if (!ghRes.ok) return json({ error: `Backup file not found for ${date} (HTTP ${ghRes.status})` }, 404);
+      /* 2026-11-04 전에는 공개 저장소 backups/ 에서 받았다. 이제 /backup?save=1 이 남긴 KV 사본만 쓴다. */
+      const saved = await env.OQC.get(BACKUP_PREFIX + date);
+      if (saved === null) return json({ error: `Backup not found for ${date}` }, 404);
 
       let backup;
-      try { backup = await ghRes.json(); } catch { return json({ error: "Backup file is not valid JSON" }, 502); }
+      try { backup = JSON.parse(saved); } catch { return json({ error: "Backup is not valid JSON" }, 502); }
       const kv = backup.kv || backup; // backupAt 래퍼 있을 수도 없을 수도
 
       /* 복원 대상 키 (shipments는 /collect로 재수집하므로 제외) */
@@ -3819,7 +3929,7 @@ if (!one) return json({ error: "Failed to fetch booking after 10 session attempt
     }
 
     return json({ error: "Not found",
-      paths: ["/data", "/lookup?bkg=", "/bookings", "/po", "/advice", "/pcloud?code=", "/history", "/alertstate", "/notify-test", "/weekly-test", "/collect", "/collect?maps=1", "/backup", "/restore", "/raw?bkg=", "/debug"] }, 404);
+      paths: ["/login", "/data", "/lookup?bkg=", "/bookings", "/po", "/advice", "/coa?file=", "/pcloud?code=", "/history", "/alertstate", "/notify-test", "/weekly-test", "/collect", "/collect?maps=1", "/backup", "/backups", "/restore", "/raw?bkg=", "/debug", "/public/calendar"] }, 404);
   },
 
   /* Cron — 분(minute)으로 종류를 구분한다.

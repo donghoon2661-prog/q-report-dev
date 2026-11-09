@@ -183,6 +183,7 @@
         <span><i style="background:#FF6B35"></i>USA vessel</span>
         <span><i class="lg-au"></i>AU vessel</span>
         <span><i class="lg-au lg-hollow"></i>AU vessel without cargo (to PKG)</span>
+        <span><i style="background:#7FD8FF"></i>KR vessel</span>
         <span><i style="background:#8AA4B5"></i>Port call (route stop)</span>
       </div>
     </aside>
@@ -192,6 +193,7 @@
         <th>VESSEL</th><th>GATE IN / ETD · PKG</th><th>ETD · SINGAPORE</th><th>LA ETB / DEST ETA</th><th>LA GATE OUT / RETURN</th>
       </tr></thead><tbody id="vtbody"></tbody></table>
       <div id="au-map"></div>
+      <div id="kr-map"></div>
       <div id="cu-notes-map"></div>
       <div id="vremark"></div>
       <aside id="popanel" hidden></aside>
@@ -206,6 +208,7 @@
       <th>VESSEL</th><th>GATE IN / ETD · PKG</th><th>ETD · SINGAPORE</th><th>LA ETB / DEST ETA</th><th>LA GATE OUT / RETURN</th>
     </tr></thead><tbody id="otbody"></tbody></table>
     <div id="au-list"></div>
+    <div id="kr-list"></div>
     <div id="cu-notes-list"></div>
     <div id="oremark"></div>
     <div id="cardlist"></div>
@@ -267,17 +270,18 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="config.js?v=12" defer></script>
-<script src="ais-layer.js?v=3" defer></script>
-<script src="country-groups.js?v=10" defer></script>
+<script src="ais-layer.js?v=4" defer></script>
+<script src="kr-layer.js?v=1" defer></script>
+<script src="country-groups.js?v=11" defer></script>
 <script src="map.js?v=20" defer></script>
 <script src="po.js?v=18" defer></script>
 <script src="trend.js?v=10" defer></script>
 <script src="system.js?v=12" defer></script>
 <script src="history.js?v=12" defer></script>
 <script src="holidays.js?v=13" defer></script>
-<script src="calendar.js?v=17" defer></script>
+<script src="calendar.js?v=18" defer></script>
 <script src="app.js?v=24" defer></script>
-<script src="country-ui.js?v=8" defer></script>
+<script src="country-ui.js?v=9" defer></script>
 <script src="country-form.js?v=1" defer></script>
 <script src="country-add.js?v=2" defer></script>
 <script src="country-edit.js?v=2" defer></script>

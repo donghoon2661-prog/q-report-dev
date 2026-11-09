@@ -44,18 +44,38 @@
 
   /* ───────────────────────── 상수 ───────────────────────── */
 
-  /* Korea is disabled for now — re-add later */
   var COUNTRIES = {
     usa: { key: 'usa', name: 'USA',       color: '#FF6B35', route: 'PORT KLANG → LA' },
-    au:  { key: 'au',  name: 'Australia', color: '#EAF2F6', route: 'PORT KLANG → SYDNEY' }
+    au:  { key: 'au',  name: 'Australia', color: '#EAF2F6', route: 'PORT KLANG → SYDNEY' },
+    kr:  { key: 'kr',  name: 'Korea',     color: '#7FD8FF', route: 'PORT KLANG → BUSAN' }
   };
 
-  /* 필터 바 버튼 순서: ALL → USA → Australia */
+  /* 필터 바 버튼 순서: ALL → USA → Australia → Korea */
   var BAR_ITEMS = [
     { key: 'all', label: 'ALL' },
     { key: 'usa', label: COUNTRIES.usa.name },
-    { key: 'au',  label: COUNTRIES.au.name }
+    { key: 'au',  label: COUNTRIES.au.name },
+    { key: 'kr',  label: COUNTRIES.kr.name }
   ];
+
+  /* 표로 보여 주는 해외 노선. match 는 plan.pod 에 들어 있는 글자, refresh 는 상단 요약 바 문구.
+     노선을 늘릴 때는 여기와 COUNTRIES·BAR_ITEMS 에 한 줄씩 더한다. */
+  var LANES = {
+    au: { key: 'au', match: 'SYDNEY', locode: 'AUSYD', pod: 'SYDNEY', refresh: '2× / DAY' },
+    kr: { key: 'kr', match: 'BUSAN',  locode: 'KRPUS', pod: 'BUSAN',  refresh: '12× / DAY' }
+  };
+
+  function laneOf(key) { return LANES[key] || LANES.au; }
+
+  /* plan.pod → 노선(없으면 null) */
+  function laneOfPlan(plan) {
+    var pod = plan && plan.pod != null ? String(plan.pod).toUpperCase() : '';
+    var keys = Object.keys(LANES);
+    for (var i = 0; i < keys.length; i++) {
+      if (pod.indexOf(LANES[keys[i]].match) !== -1) return LANES[keys[i]];
+    }
+    return null;
+  }
 
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -167,7 +187,8 @@
   /* locode 별 표시 시간대. 여기 없는 locode 는 UTC 로 두고 접미사 ' UTC' 를 붙인다 */
   var TZ_BY_LOCODE = {
     MYPKG: 'Asia/Kuala_Lumpur',
-    AUSYD: 'Australia/Sydney'
+    AUSYD: 'Australia/Sydney',
+    KRPUS: 'Asia/Seoul'
   };
 
   /* 이벤트 판정 정규식(14차 계약) — code + ' ' + description 결합 문자열에 검사 */
@@ -302,11 +323,15 @@
     var r = row || {};
     var tq = (r.traqo && typeof r.traqo === 'object') ? r.traqo : null;
     var inherited = !!(tq && tq.inherited === true);
+    var dest = laneOf(r.lane).locode;
+
+    /* 도착 완료로 등록한 건(plan.arrived)은 추적 이벤트가 없어도 ARRIVED */
+    if (r.arrived === true) return { phase: 'ARRIVED', cls: PHASES.DISCHARGED, label: 'ARRIVED' };
 
     if (!inherited) {
-      if (hasActualTqEvent(tq, RETURN_RE, SYD_LOCODE)) return { phase: 'RETURNED', cls: PHASES.RETURNED, label: LABELS.RETURNED };
-      if (hasActualTqEvent(tq, GATE_OUT_RE, SYD_LOCODE)) return { phase: 'GATED OUT', cls: PHASES.GATED_OUT, label: LABELS.GATED_OUT };
-      if (hasActualTqEvent(tq, DISCH_RE, SYD_LOCODE)) return { phase: 'DISCHARGED', cls: PHASES.DISCHARGED, label: LABELS.DISCHARGED };
+      if (hasActualTqEvent(tq, RETURN_RE, dest)) return { phase: 'RETURNED', cls: PHASES.RETURNED, label: LABELS.RETURNED };
+      if (hasActualTqEvent(tq, GATE_OUT_RE, dest)) return { phase: 'GATED OUT', cls: PHASES.GATED_OUT, label: LABELS.GATED_OUT };
+      if (hasActualTqEvent(tq, DISCH_RE, dest)) return { phase: 'DISCHARGED', cls: PHASES.DISCHARGED, label: LABELS.DISCHARGED };
     }
 
     var ata = tq && typeof tq.ataUtc === 'string' ? tq.ataUtc : '';
@@ -326,12 +351,12 @@
 
   /* ───────────────────────── 공개 함수 ───────────────────────── */
 
-  /* filter('all'|'usa'|'au') 상태에서 key 국가를 보여줄지 */
+  /* filter('all'|'usa'|'au'|'kr') 상태에서 key 국가를 보여줄지 */
   function visible(filter, key) {
     return filter === 'all' || filter === key;
   }
 
-  /* 필터 버튼 3개(전체/USA/Australia)를 container에 그린다.
+  /* 필터 버튼(전체/USA/Australia/Korea)을 container에 그린다.
      state.filter에 해당하는 버튼에 'on' 클래스. 클릭 시 onChange(key). */
   function renderBar(container, state, onChange) {
     if (!container || typeof container.appendChild !== 'function') return;
@@ -369,7 +394,28 @@
     return m ? m[1] : '';
   }
 
-  function auRows(aisJson) {
+  /* plan.coa(문자열 또는 배열) → COA 시트 이름 배열 */
+  function coaSheets(plan) {
+    var v = plan && plan.coa;
+    var list = Array.isArray(v) ? v : (v != null && v !== '' ? String(v).split(',') : []);
+    return list.map(function (x) { return String(x).trim(); })
+      .filter(function (x) { return /^[A-Za-z0-9_\-]{3,80}$/.test(x); });
+  }
+
+  /* 폰 tracker 가 올린 선박 위치 중 가장 최근 시각(ISO) — 없으면 null */
+  function trackerFixIso(plan) {
+    var trk = plan && plan.tracker && typeof plan.tracker === 'object' ? plan.tracker : {};
+    var best = null;
+    Object.keys(trk).forEach(function (c) {
+      var at = trk[c] && trk[c].ais ? trk[c].ais.at : null;
+      if (typeof at === 'string' && isFinite(Date.parse(at)) && (!best || at > best)) best = at;
+    });
+    return best;
+  }
+
+  /* key: 'au'(기본) | 'kr' */
+  function auRows(aisJson, key) {
+    var lane = laneOf(key);
     var rows = [];
     if (!aisJson || typeof aisJson !== 'object') return rows;
     var plans = aisJson.plans && typeof aisJson.plans === 'object' ? aisJson.plans : {};
@@ -379,7 +425,7 @@
     Object.keys(plans).forEach(function (mbl) {
       var plan = plans[mbl] || {};
       var pod = plan.pod != null ? String(plan.pod).toUpperCase() : '';
-      if (pod.indexOf('SYDNEY') === -1) return; /* 호주(시드니) 노선만 */
+      if (pod.indexOf(lane.match) === -1) return; /* 이 노선만 */
 
       var mmsi = plan.mmsi != null ? String(plan.mmsi) : null;
       var v = mmsi && Object.prototype.hasOwnProperty.call(vessels, mmsi) ? vessels[mmsi] : null;
@@ -404,10 +450,13 @@
          pickTqEvent 방식·선택 규칙으로 GATE_OUT_RE 를 뽑는다. */
       var tq = traqoOf(plan);
       var gateIn = pickTqEvent(tq, GATE_IN_RE, PKG_LOCODE, true);
-      var gateOut = pickTqEvent(tq, GATE_OUT_RE, SYD_LOCODE, false);
-      var ret = pickTqEvent(tq, RETURN_RE, SYD_LOCODE, false);
+      var gateOut = pickTqEvent(tq, GATE_OUT_RE, lane.locode, false);
+      var ret = pickTqEvent(tq, RETURN_RE, lane.locode, false);
 
       rows.push({
+        lane: lane.key,
+        arrived: plan.arrived === true,
+        coa: coaSheets(plan),
         mmsi: mmsi == null ? '' : mmsi,
         carrier: plan.carrier != null ? String(plan.carrier).trim().toUpperCase() : '',
         vessel: plan.vessel != null ? String(plan.vessel) : '',
@@ -431,7 +480,7 @@
         etbText: etb ? fmtDay(etb) : null,
         etaText: eta ? fmtDay(eta) : null,
         etdSource: plan.source != null ? String(plan.source) : '',
-        lastDataIso: parseAisTime(pos && pos.at),
+        lastDataIso: parseAisTime(pos && pos.at) || trackerFixIso(plan),
         note: note,
         warn: note !== '' /* 여러 출처의 일정이 다르다는 뜻 — 표에는 칩을 그리지 않는다 */
       });
@@ -451,14 +500,15 @@
     return '<span class="' + cls + '">' + esc(w) + '</span>';
   }
 
-  function renderAuTable(rows, nowMs) {
+  function renderAuTable(rows, nowMs, key) {
     var list = Array.isArray(rows) ? rows : [];
+    var lane = laneOf(key);
 
     var head = '<tr>'
       + '<th>VESSEL</th>'
       + '<th>GATE IN / ETD · PKG</th>'
-      + '<th>SYDNEY ETB / DEST ETA</th>'
-      + '<th>SYDNEY GATE OUT / RETURN</th>'
+      + '<th>' + esc(lane.pod) + ' ETB / DEST ETA</th>'
+      + '<th>' + esc(lane.pod) + ' GATE OUT / RETURN</th>'
       + '<th>CARRIER</th>'
       + '</tr>';
 
@@ -477,6 +527,10 @@
       var voyage = r.voyage ? '<span class="vy">' + esc(r.voyage) + '</span>' : '';
       var poBit = (r.po && r.po.length)
         ? '<span class="vy">(' + esc(r.po.join(', ')) + ')</span>' : '';
+      /* 해외 COA: 원본 PDF 를 여는 버튼(시트마다 하나). 클릭은 country-ui.js 가 받는다 */
+      var coaBit = (r.coa || []).map(function (sheet) {
+        return '<button type="button" class="pocoa" data-cg-coa="' + esc(sheet) + '" title="Open COA original">COA</button>';
+      }).join('');
 
       /* [15차] 단계 배지 — VESSEL 칸 첫 줄(선박명·항차·PO 뒤). USA 표와 같은
          .ph 클래스(style.css 의 ph book/sail/dock/done/out/rtn — 새 색 없음,
@@ -501,7 +555,7 @@
       var atdText = atdIso ? fmtLocal(atdIso, PKG_LOCODE) : null;
       var etdCell = (atdText || r.etdText)
         ? '<span class="dt">' + esc(atdText || r.etdText) + '</span>'
-          + estSpan(atdText ? 'actual' : 'scheduled')
+          + estSpan(atdText || r.arrived ? 'actual' : 'scheduled')
           + (r.followsText ? '<span class="est-note"> · ' + esc(r.followsText) + '</span>' : '')
         : '<span class="pa-na">—</span>';
       var inLine = '<div><span class="eta-lbl">IN</span>'
@@ -518,12 +572,12 @@
           : '<span class="pa-na">—</span>')
         + '</div>';
       var ataIso = (r.traqo && typeof r.traqo.ataUtc === 'string') ? r.traqo.ataUtc : null;
-      var ataText = ataIso ? fmtLocal(ataIso, SYD_LOCODE) : null;
+      var ataText = ataIso ? fmtLocal(ataIso, lane.locode) : null;
       var etaLine = '<div style="margin-top:3px"><span class="eta-lbl">ETA</span>'
         + (ataText
           ? '<span class="dt">' + esc(ataText) + '</span>' + estSpan('actual')
           : (r.etaText
-            ? '<span class="dt">' + esc(r.etaText) + '</span>' + estSpan('scheduled')
+            ? '<span class="dt">' + esc(r.etaText) + '</span>' + estSpan(r.arrived ? 'actual' : 'scheduled')
             : '<span class="pa-na">—</span>'))
         + '</div>';
 
@@ -541,7 +595,7 @@
          (기본 display:none, html[data-cg-admin="1"] 일 때만 — ADD 버튼과 같은 방식,
          새 색 없음). 클릭은 country-edit.js 의 캡처 단계 위임이 받아 행 클릭(상세)
          동작과 분리된다. 키(r.mbl)는 속성값이라 esc 로 이스케이프한다. */
-      var editBtn = '<button type="button" class="cg-edit" data-cg-action="edit-au"'
+      var editBtn = lane.key !== 'au' ? '' : '<button type="button" class="cg-edit" data-cg-action="edit-au"'
         + ' data-cg-key="' + esc(r.mbl) + '">EDIT</button>';
       var retCell = '<div style="margin-top:3px"><span class="eta-lbl">RTN</span>'
         + (r.ret
@@ -549,11 +603,11 @@
           : '<span class="pa-na">—</span>')
         + editBtn + '</div>';
 
-      return '<tr>'
-        + '<td><span class="nm">' + vesselName + '</span>' + voyage + poBit + badge + bk + '</td>'
+      return '<tr data-cg-mbl="' + esc(r.mbl) + '">'
+        + '<td><span class="nm">' + vesselName + '</span>' + voyage + poBit + coaBit + badge + bk + '</td>'
         + '<td data-l="GATE IN / ETD · PKG" style="white-space:nowrap">' + inLine + etdLine + '</td>'
-        + '<td data-l="SYDNEY ETB / ETA">' + etbLine + etaLine + '</td>'
-        + '<td data-l="SYDNEY OUT / RTN">' + outLine + retCell + '</td>'
+        + '<td data-l="' + esc(lane.pod) + ' ETB / ETA">' + etbLine + etaLine + '</td>'
+        + '<td data-l="' + esc(lane.pod) + ' OUT / RTN">' + outLine + retCell + '</td>'
         + '<td data-l="CARRIER"><span class="dt">' + esc(r.carrier || '—') + '</span></td>'
         + '</tr>';
     }).join('');
@@ -579,6 +633,8 @@
     var byKey = {};
     list.forEach(function (r) {
       r = r || {};
+      /* 도착 건, 위치를 아직 못 받은 tracker 노선 건은 줄을 만들지 않는다 */
+      if (r.arrived === true || (r.lane === 'kr' && !r.lastDataIso)) return;
       var mmsi = r.mmsi != null ? String(r.mmsi) : '';
       var vessel = r.vessel != null ? String(r.vessel) : '';
       var key = mmsi || vessel;
@@ -619,7 +675,7 @@
     list.forEach(function (r) {
       r = r || {};
       var tq = r.traqo;
-      if (!tq || typeof tq !== 'object' || tq.inherited === true) return;
+      if (!tq || typeof tq !== 'object' || tq.inherited === true || r.lane === 'kr') return;
       var name = (r.vessel != null && r.vessel !== '') ? String(r.vessel)
         : (r.mbl != null && r.mbl !== '' ? String(r.mbl) : '—');
       var synced = typeof tq.syncedAt === 'string' ? tq.syncedAt : '';
@@ -649,13 +705,15 @@
      - REFRESH: 항상 '2× / DAY' (Traqo 12시간 주기)
      - BOOKINGS: 호주 선적 수
      - EARLIEST ARRIVAL: eta 중 가장 이른 날짜(fmtDay), 없으면 — */
-  function auLaneModel(aisJson) {
+  function auLaneModel(aisJson, key) {
+    var lane = laneOf(key);
     var plans = (aisJson && aisJson.plans && typeof aisJson.plans === 'object') ? aisJson.plans : {};
     var carriers = [], n = 0, traqoOn = false, earliest = null;
     Object.keys(plans).forEach(function (k) {
       var p = plans[k];
       if (!p || typeof p !== 'object') return;
-      if (String(p.pod == null ? '' : p.pod).toUpperCase().indexOf('SYDNEY') === -1) return;
+      if (String(p.pod == null ? '' : p.pod).toUpperCase().indexOf(lane.match) === -1) return;
+      if (p.arrived === true) return; /* 도착 완료 건은 진행 중 건수에서 뺀다 */
       n++;
       var c = String(p.carrier == null ? '' : p.carrier).trim().toUpperCase();
       if (c && carriers.indexOf(c) === -1) carriers.push(c);
@@ -667,15 +725,18 @@
     return {
       carrier: carriers.length ? carriers.join(' / ') : '—',
       pol: 'PORT KLANG',
-      refresh: '2× / DAY',
-      pod: 'SYDNEY',
+      refresh: lane.refresh,
+      pod: lane.pod,
       bookings: n,
       earliest: earliest ? fmtDay(earliest) : null
     };
   }
 
   function auLaneHtml(aisJson) {
-    var m = auLaneModel(aisJson);
+    return Object.keys(LANES).map(function (k) { return laneRowHtml(auLaneModel(aisJson, k)); }).join('');
+  }
+
+  function laneRowHtml(m) {
     if (!m) return '';
     function cell(label, value) {
       return '<div data-cg-lane="1">' + label + '<b>' + esc(value) + '</b></div>';
@@ -730,6 +791,15 @@
       + (topHtml == null ? '' : String(topHtml))
       + '<div class="cg-card">' + (innerHtml == null ? '' : String(innerHtml)) + '</div>'
       + '</section>';
+  }
+
+  /* 도착 완료 건 표 — 진행 중 표 아래에 'Arrived' 제목줄과 함께 붙는다. 없으면 '' */
+  function arrivedBlock(rows, nowMs, key) {
+    var list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return '';
+    return '<div class="cg-arrived-head">Arrived <small>' + list.length
+      + (list.length === 1 ? ' shipment' : ' shipments') + ' · COA original</small></div>'
+      + '<div class="cg-card">' + renderAuTable(list, nowMs, key) + '</div>';
   }
 
   /* 데이터가 한 번도 없던 국가의 빈 상태 안내 */
@@ -818,7 +888,8 @@
       plan.traqo = t;
       /* 표의 ETA 칸은 plan.eta(시드니 현지)를 쓰므로 폰 ETA 로 바꾼다. 일정이 자기 값이 되면 follows 표시는 뺀다. */
       if (trkEta) {
-        var loc = fmtIsoLocal(trkEta, SYD_LOCODE);
+        var lane = laneOfPlan(plan);
+        var loc = fmtIsoLocal(trkEta, lane ? lane.locode : SYD_LOCODE);
         if (loc) plan.eta = loc;
       }
       if (atd || trkEta) { plan.scheduleInherited = false; plan.scheduleFrom = null; plan.scheduleFromBooking = null; }
@@ -833,8 +904,10 @@
     COUNTRIES: COUNTRIES,
     visible: visible,
     renderBar: renderBar,
+    LANES: LANES,
     auRows: auRows,
     renderAuTable: renderAuTable,
+    arrivedBlock: arrivedBlock,
     auNotes: auNotes,
     auPhase: auPhase,
     auLaneModel: auLaneModel,

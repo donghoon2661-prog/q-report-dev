@@ -977,8 +977,8 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 @media (max-width:900px){#qview .advice{margin:0 10px 12px}}
 #side .galbox:empty{display:none}
 /* 호주 표 행: 미국 표처럼 누를 수 있다는 표시 (누르면 상세·사진) */
-#au-map tbody tr,#au-list tbody tr{cursor:pointer}
-#au-map tbody tr:hover,#au-list tbody tr:hover{background:rgba(255,255,255,.03)}
+#au-map tbody tr,#au-list tbody tr,#kr-map tbody tr,#kr-list tbody tr{cursor:pointer}
+#au-map tbody tr:hover,#au-list tbody tr:hover,#kr-map tbody tr:hover,#kr-list tbody tr:hover{background:rgba(255,255,255,.03)}
 /* 누른 행 바로 아래 상세(미국 #popanel과 같은 모양) */
 tr.au-detail-row,tr.au-detail-row:hover{cursor:default;background:transparent!important}
 tr.au-detail-row>td{padding:0 12px 14px}

@@ -522,7 +522,10 @@
 
     function update(aisJson) {
       ensureBase();
-      var groups = groupByVessel(buildModels(aisJson));
+      /* 이 레이어는 시드니 항로만 — 부산행은 kr-layer.js 가 그린다 */
+      var groups = groupByVessel(buildModels(aisJson).filter(function (m) {
+        return String(m.pod == null ? '' : m.pod).toUpperCase().indexOf('BUSAN') === -1;
+      }));
       var seen = {};
 
       /* [14차 수정] 루프 변수가 바깥 Leaflet layerGroup(group)을 가려

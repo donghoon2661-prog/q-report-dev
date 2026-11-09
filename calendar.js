@@ -124,7 +124,9 @@ function auCalendarItems(plans) {
     if (!p || typeof p !== 'object') continue;
     if (Object.keys(p).length === 0) continue;
     const pod = typeof p.pod === 'string' ? p.pod.toUpperCase() : '';
-    if (pod.indexOf('SYDNEY') === -1) continue;
+    const cty = pod.indexOf('SYDNEY') !== -1 ? 'AU' : (pod.indexOf('BUSAN') !== -1 ? 'KR' : '');
+    if (!cty) continue;
+    if (p.arrived === true) continue;   /* 도착 등록 건은 달력에서 뺀다 */
     const tq = (p.traqo && typeof p.traqo === 'object') ? p.traqo : {};
     if (typeof tq.ataUtc === 'string' && isFinite(Date.parse(tq.ataUtc))) continue;
     const booking = (p.booking != null && p.booking !== '') ? p.booking
@@ -159,7 +161,7 @@ function auCalendarItems(plans) {
       delayDays:       null,
       etaChangeCount:    0,
       polDepChangeCount: 0,
-      country:         'AU',
+      country:         cty,
       po:              Array.isArray(p.po) ? p.po.slice() : []
     });
   }
@@ -228,9 +230,11 @@ function fmtCalHeader(year, month) {
 
 /* ── [16차] 칩 색: 미국은 부킹별 팔레트, 호주는 흰색 칩 + 회청 띠, 미국은 팔레트 색 + 주황 띠 ── */
 const CAL_AU_PAL = { bg:'#F4F8FA', text:'#14242E', dot:'#5A7183', stripe:'#8AA4B5' };
+const CAL_KR_PAL = { bg:'#DFF4FF', text:'#0B2A3A', dot:'#3E9CCB', stripe:'#7FD8FF' };
 const CAL_US_STRIPE = '#FF6B35';   /* 미국 칩 왼쪽 띠(지도의 미국 주황과 맞춤) */
 function calPal(item) {
   if (item && item.country === 'AU') return CAL_AU_PAL;
+  if (item && item.country === 'KR') return CAL_KR_PAL;
   return CAL_PALETTE[colorMap[item.booking] ?? 0];
 }
 
@@ -255,7 +259,8 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
     : '';
 
   const chipsHTML = events.map(ev => {
-    const au    = ev.item.country === 'AU';
+    const cty   = ev.item.country || '';
+    const au    = cty === 'AU' || cty === 'KR';   /* 해외 노선(문자열 이스케이프·표시 방식이 같다) */
     const pal     = calPal(ev.item);
     const vname   = (ev.item.vessel || ev.item.booking).slice(0, 9);
     const isFirst = ev.type === 'FIRST_ETA' || ev.type === 'FIRST_ETD';
@@ -272,10 +277,10 @@ function cellHTML(dateStr, dayNum, isOtherMonth, dateMap) {
       ? ` <span class="cal-chip-chg">(${ord(ev.item.etaChangeCount)} change)</span>` : '';
     const etdChg  = ev.type === 'ETD' && ev.item.polDepChangeCount > 0
       ? ` <span class="cal-chip-chg">(${ord(ev.item.polDepChangeCount)} change)</span>` : '';
-    return `<div class="cal-chip" style="background:${pal.bg};color:${pal.text};border-left:6px solid ${au ? CAL_AU_PAL.stripe : CAL_US_STRIPE}">` +
+    return `<div class="cal-chip" style="background:${pal.bg};color:${pal.text};border-left:6px solid ${au ? pal.stripe : CAL_US_STRIPE}">` +
            `<span class="cal-chip-dot" style="background:${pal.dot}"></span>` +
            `<span class="cal-chip-type">${ev.type}</span>` +
-           (au ? `<span class="cal-chip-cty" style="font-size:9px;opacity:.7;margin-right:3px">AU</span>` : '') +
+           (au ? `<span class="cal-chip-cty" style="font-size:9px;opacity:.7;margin-right:3px">${cty}</span>` : '') +
            `<span class="cal-chip-name">${au ? escCal(vname) : vname}</span>${etaChg}${etdChg}</div>`;
   }).join('');
 
@@ -309,7 +314,7 @@ function detailPanelHTML(dateStr, dateMap) {
 
   const rowsHTML = events.map(ev => {
     const it  = ev.item;
-    const au  = it.country === 'AU';   /* [16차] 호주 항목 */
+    const au  = it.country === 'AU' || it.country === 'KR';   /* [16차] 해외 항목 */
     const pal = calPal(it);
     const delayHTML = typeof it.delayDays === 'number' && it.delayDays !== 0
       ? `<span class="cal-delay${it.alert === 'alert' ? ' cal-delay-alert' : ''}">` +
@@ -343,7 +348,7 @@ function detailPanelHTML(dateStr, dateMap) {
            (it.firstSeenEta
              ? `<span><span class="cal-dt-lbl">ORIG ETA</span><s>${fmtCalDate(it.firstSeenEta)}</s></span>`
              : '') +
-           `<span><span class="cal-dt-lbl">${au ? 'ETA SYD' : 'ETA LA'}</span>${fmtCalDate(it.calendarEta)}</span>` +
+           `<span><span class="cal-dt-lbl">${it.country === 'KR' ? 'ETA BSN' : (au ? 'ETA SYD' : 'ETA LA')}</span>${fmtCalDate(it.calendarEta)}</span>` +
            `</div></div></div>`;
   }).join('');
 

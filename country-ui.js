@@ -130,7 +130,7 @@
   var inited = false;
 
   /* 지도 관련 — window.onMapReady 를 통해 채워진다 */
-  var mapCtl = { map: null, usaGroup: null, controller: null };
+  var mapCtl = { map: null, usaGroup: null, controller: null, krController: null };
   var themeObserver = null;
 
   var REFRESH_MS = 5 * 60 * 1000;  /* /ais 재요청 주기 (5분) */
@@ -140,16 +140,22 @@
   var MAP_USA_HIDE_IDS = ['usa-head-map', 'vtable', 'vremark'];
   var LIST_USA_HIDE_IDS = ['overview', 'usa-head-list', 'otable', 'oremark', 'cardlist'];
   /* 호주 영역은 반대로 그 탭 필터의 visibilityFor(...).au === false('usa') 일 때 cu-hide */
-  var MAP_AU_HIDE_IDS = ['au-map', 'cu-notes-map'];
-  var LIST_AU_HIDE_IDS = ['au-list', 'cu-notes-list'];
+  var MAP_AU_HIDE_IDS = ['au-map'];
+  var LIST_AU_HIDE_IDS = ['au-list'];
+  var MAP_KR_HIDE_IDS = ['kr-map'];
+  var LIST_KR_HIDE_IDS = ['kr-list'];
+  /* 알림 칸은 호주·한국 공용 — 둘 다 안 보일 때만 숨긴다 */
+  var MAP_NOTE_IDS = ['cu-notes-map'];
+  var LIST_NOTE_IDS = ['cu-notes-list'];
 
   /* ─────────────────────── 순수 함수 (Node 테스트용) ─────────────────────── */
 
-  /* filter('all'|'usa'|'au') → 국가별 표시 여부. 알 수 없는 값('kr' 포함)은 'all' 취급. */
+  /* filter('all'|'usa'|'au'|'kr') → 국가별 표시 여부. 알 수 없는 값은 'all' 취급. */
   function visibilityFor(filter) {
-    if (filter === 'usa') return { usa: true,  au: false };
-    if (filter === 'au')  return { usa: false, au: true  };
-    return { usa: true, au: true }; /* 'all' 및 알 수 없는 값 */
+    if (filter === 'usa') return { usa: true,  au: false, kr: false };
+    if (filter === 'au')  return { usa: false, au: true,  kr: false };
+    if (filter === 'kr')  return { usa: false, au: false, kr: true  };
+    return { usa: true, au: true, kr: true }; /* 'all' 및 알 수 없는 값 */
   }
 
   /* [6차 지시서] 탭('map'|'list') + 해당 탭 필터 → cu-hide 할 요소 id 배열.
@@ -161,14 +167,18 @@
     var out = [];
     if (!vis.usa) out = out.concat(isMap ? MAP_USA_HIDE_IDS : LIST_USA_HIDE_IDS);
     if (!vis.au) out = out.concat(isMap ? MAP_AU_HIDE_IDS : LIST_AU_HIDE_IDS);
+    if (!vis.kr) out = out.concat(isMap ? MAP_KR_HIDE_IDS : LIST_KR_HIDE_IDS);
+    if (!vis.au && !vis.kr) out = out.concat(isMap ? MAP_NOTE_IDS : LIST_NOTE_IDS);
     return out;
   }
 
   /* 탭별 전체 후보 id — 숨김 해제(cu-hide 제거) 대상 전부 */
   var TAB_ALL_IDS = {
-    map: MAP_USA_HIDE_IDS.concat(MAP_AU_HIDE_IDS),
-    list: LIST_USA_HIDE_IDS.concat(LIST_AU_HIDE_IDS)
+    map: MAP_USA_HIDE_IDS.concat(MAP_AU_HIDE_IDS, MAP_KR_HIDE_IDS, MAP_NOTE_IDS),
+    list: LIST_USA_HIDE_IDS.concat(LIST_AU_HIDE_IDS, LIST_KR_HIDE_IDS, LIST_NOTE_IDS)
   };
+
+  function getKrLayer() { return (typeof window !== 'undefined' && window.KrLayer) || null; }
 
   /* AisLayer.ROUTE 의 [lat,lng] 배열 (없으면 []) */
   function routePoints() {
@@ -190,6 +200,7 @@
       out = out.concat(usa.filter(validPoint));
     }
     if (vis.au) out = out.concat(routePoints());
+    if (vis.kr && getKrLayer()) out = out.concat(getKrLayer().ROUTE);
     return out;
   }
 
@@ -216,6 +227,20 @@
       html = CG.renderGroup('au', count, CG.renderAuTable(rows, nowMs), topHtml);
     }
     return { auCount: count, auHtml: html };
+  }
+
+  /* 한국 영역 내용(DOM 접근 없음). 진행 중 표 + 도착 건 표. 0건이면 'kr' 필터일 때만 안내문 */
+  function krContentFor(filter, aisJson, nowMs) {
+    var CG = getCountryGroups();
+    if (!visibilityFor(filter).kr || !CG) return '';
+    var rows = CG.auRows(aisJson, 'kr');
+    if (!rows.length) return filter === 'kr' ? CG.renderEmpty('kr') : '';
+    var live = rows.filter(function (r) { return !r.arrived; });
+    var done = rows.filter(function (r) { return r.arrived; });
+    /* 진행 중 건이 없어도 제목줄은 남기고, 도착 건은 그 아래에 붙인다 */
+    return CG.renderGroup('kr', live.length,
+      live.length ? CG.renderAuTable(live, nowMs, 'kr') : '<div class="cg-empty">No shipments on the water.</div>', '')
+      + CG.arrivedBlock(done, nowMs, 'kr');
   }
 
   /* [2차 수정·버그 1] 필터별 호주 영역 내용을 만드는 순수 함수(DOM 접근 없음).
@@ -485,6 +510,7 @@
 
     var name = esc(m.name || '');
     var title = m.voyage ? name + ' ' + esc(m.voyage) : name;
+    var podCode = /BUSAN/i.test(String(m.pod || '')) ? 'BSN' : 'SYD';
     var html = '<h3>' + title + '</h3>';
 
     if (list) {
@@ -512,11 +538,11 @@
       + (m.source ? ' (' + esc(m.source) + ')' : '') + '</dd>';
 
     /* SYD ETB: 날짜+시각 형식 (없으면 —) */
-    html += '<dt>SYD ETB</dt><dd>' + (fmtDay(m.etb) || (m.etb ? esc(m.etb) : '—')) + '</dd>';
+    html += '<dt>' + podCode + ' ETB</dt><dd>' + (fmtDay(m.etb) || (m.etb ? esc(m.etb) : '—')) + '</dd>';
 
     /* SYD ETA: 날짜+시각 형식 + podTerminal */
     var etaText = fmtDay(m.eta) || (m.eta ? esc(m.eta) : '—');
-    html += '<dt>SYD ETA</dt><dd>' + etaText
+    html += '<dt>' + podCode + ' ETA</dt><dd>' + etaText
       + (m.podTerminal ? ' (' + esc(m.podTerminal) + ')' : '') + '</dd>';
 
     /* LAST DATA: AisLayer.formatLast (없으면 '—') */
@@ -595,6 +621,10 @@
     var b = byId('au-list');
     if (a) a.innerHTML = contentMap;
     if (b) b.innerHTML = contentList;
+    var krA = byId('kr-map');
+    var krB = byId('kr-list');
+    if (krA) krA.innerHTML = krContentFor(state.filterMap, ais, now);
+    if (krB) krB.innerHTML = krContentFor(state.filterList, ais, now);
     renderAuNotes();
     renderAuLane();
     /* [11A] 호주 영역을 다시 그릴 때마다 관리자 버튼 상태를 동기화한다.
@@ -626,7 +656,8 @@
     var CG = getCountryGroups();
     function notesFor(filter) {
       if (!CG || typeof CG.auNotes !== 'function' || typeof CG.auRows !== 'function') return '';
-      return visibilityFor(filter).au ? CG.auNotes(CG.auRows(ais)) : '';
+      var vis = visibilityFor(filter);
+      return CG.auNotes((vis.au ? CG.auRows(ais) : []).concat(vis.kr ? CG.auRows(ais, 'kr') : []));
     }
     var a = byId('cu-notes-map');
     var b = byId('cu-notes-list');
@@ -662,12 +693,38 @@
     return AL.create(L, map, { theme: theme, onSelect: showAuDetail });
   }
 
+  /* 지도에서 한국 선박을 누르면 그 선적의 상세를 옆 칸에 연다 */
+  function showKrByMbl(mbl) {
+    var AL = getAisLayer();
+    if (!ais || !AL) return;
+    var models = AL.buildModels(ais);
+    for (var i = 0; i < models.length; i++) {
+      if (String(models[i].mbl) === String(mbl)) { showAuDetail(models[i]); return; }
+    }
+  }
+
+  function createKrController(map) {
+    var KL = getKrLayer();
+    if (!KL || typeof L === 'undefined' || !L) return null;
+    var theme = (typeof THEME !== 'undefined' && THEME === 'light') ? 'light' : 'dark';
+    return KL.create(L, map, { theme: theme, onSelect: showKrByMbl });
+  }
+
   /* 컨트롤러 재생성 (지도 교체·테마 변경 시) */
   function recreateController() {
     if (!mapCtl.map) return;
     if (mapCtl.controller && typeof mapCtl.controller.destroy === 'function') {
       try { mapCtl.controller.destroy(); } catch (e) { /* 이미 제거된 경우 무시 */ }
       mapCtl.controller = null;
+    }
+    if (mapCtl.krController) {
+      try { mapCtl.krController.destroy(); } catch (e) { /* 이미 제거된 경우 무시 */ }
+      mapCtl.krController = null;
+    }
+    mapCtl.krController = createKrController(mapCtl.map);
+    if (mapCtl.krController) {
+      mapCtl.krController.setVisible(visibilityFor(state.filterMap).kr);
+      if (ais) { try { mapCtl.krController.update(ais); } catch (e) { /* 데이터 오류는 조용히 무시 */ } }
     }
     mapCtl.controller = createController(mapCtl.map);
     if (mapCtl.controller && ais && typeof mapCtl.controller.update === 'function') {
@@ -683,6 +740,9 @@
 
     if (mapCtl.controller && typeof mapCtl.controller.setVisible === 'function') {
       try { mapCtl.controller.setVisible(vis.au); } catch (e) { /* 무시 */ }
+    }
+    if (mapCtl.krController) {
+      try { mapCtl.krController.setVisible(vis.kr); } catch (e) { /* 무시 */ }
     }
     if (map && mapCtl.usaGroup) {
       try {
@@ -767,8 +827,9 @@
     var CG = getCountryGroups();
     var AL = getAisLayer();
     if (!ais || !CG || !AL) return;
-    var rows = CG.auRows(ais);
-    var row = rows[idx];
+    var mbl = tr && tr.getAttribute ? tr.getAttribute('data-cg-mbl') : null;
+    var rows = CG.auRows(ais).concat(CG.auRows(ais, 'kr'));
+    var row = rows.filter(function (r) { return String(r.mbl) === String(mbl); })[0] || rows[idx];
     if (!row) return;
     var models = AL.buildModels(ais);
     var model = null;
@@ -851,15 +912,38 @@
     }).catch(function (e) { gal.innerHTML = '<div class="gal-title warn">photos unavailable — ' + esc(e.message || e) + '</div>'; });
   }
 
+  /* 해외 COA 원본 — /coa-pdf 는 로그인 토큰이 필요해서 받아서 새 탭으로 연다 */
+  function openCoaOriginal(sheet) {
+    var base = (typeof API_ROOT === 'string') ? API_ROOT : '';
+    var win = window.open('', '_blank');   /* 팝업 차단을 피하려고 클릭 순간에 연다 */
+    fetch(base + '/coa-pdf?sheet=' + encodeURIComponent(sheet),
+      { headers: typeof authHeaderObj === 'function' ? authHeaderObj() : {} })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        if (win) win.location = url; else window.location = url;
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      })
+      .catch(function (e) {
+        if (win) win.close();
+        if (typeof alert === 'function') alert('COA original is not available yet (' + (e.message || e) + ')');
+      });
+  }
+
   /* 표 컨테이너에 클릭 위임 바인딩 (innerHTML 교체와 무관하게 1회만) */
   function bindAuRowClicks() {
-    ['au-map', 'au-list'].forEach(function (id) {
+    ['au-map', 'au-list', 'kr-map', 'kr-list'].forEach(function (id) {
       var el = byId(id);
       if (!el || el._cuBound) return;
       el._cuBound = true;
       el.addEventListener('click', function (ev) {
         var target = ev.target || ev.srcElement;
         if (!target || typeof target.closest !== 'function') return;
+        var coaBtn = target.closest('[data-cg-coa]');
+        if (coaBtn) { openCoaOriginal(coaBtn.getAttribute('data-cg-coa')); return; }
         if (target.closest('tr.au-detail-row') || target.closest('button, a, input, select')) return;
         var tr = target.closest('tr');
         if (!tr || !el.contains(tr)) return;
@@ -896,6 +980,9 @@
         if (mapCtl.controller && typeof mapCtl.controller.update === 'function') {
           try { mapCtl.controller.update(ais); } catch (e) { /* 무시 */ }
           try { if (typeof window !== 'undefined' && window.fitAllRoutes) window.fitAllRoutes(); } catch (e) { /* 무시 */ }
+        }
+        if (mapCtl.krController) {
+          try { mapCtl.krController.update(ais); } catch (e) { /* 무시 */ }
         }
       })
       .catch(function () { /* 조용히 무시 — 콘솔 에러 없음 */ });

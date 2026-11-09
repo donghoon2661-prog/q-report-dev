@@ -2445,7 +2445,7 @@ function parsePoInput(raw) {
   for (const item of items) {
     const p = item.trim().toUpperCase();
     if (!p) continue;
-    if (!/^AU-\d{6,12}$/.test(p)) return { error: "po must look like AU-1924661260 (bad: " + p + ")" };
+    if (!/^(AU-\d{6,12}|KR-\d{3}-\d{4}-\d{3})$/.test(p)) return { error: "po must look like AU-1924661260 or KR-859-1650-798 (bad: " + p + ")" };
     if (!pos.includes(p)) pos.push(p);
   }
   if (pos.length > 20) return { error: "po must be 20 items or fewer (got: " + pos.length + ")" };
@@ -2475,7 +2475,8 @@ async function saveAisPlan(env, body) {
     if ((f === "imo" || f === "mmsi") && v && !/^\d{7,9}$/.test(v)) return { error: f + " must be digits" };
     if (f === "booking") {
       const b = v.toUpperCase();
-      if (b && !/^[A-Z]{3}\d{7}$/.test(b)) return { error: "booking must be 3 letters + 7 digits (e.g. CDB0585621)" };
+      /* 선사마다 형식이 달라(ANL CDB0585621, Sinokor SNKO1602…, KMTC MY00702506, Hapag 32605378) 글자·숫자만 본다 */
+      if (b && !/^[A-Z0-9]{6,24}$/.test(b)) return { error: "booking must be 6-24 letters/digits (e.g. CDB0585621)" };
       cur[f] = b;
       continue;
     }
@@ -2497,6 +2498,14 @@ async function saveAisPlan(env, body) {
       if (!Number.isInteger(n) || n < 1 || n > 99) return { error: "cntrQty must be a whole number from 1 to 99" };
       cur.cntrQty = n;
     }
+  }
+  /* arrived: 이미 도착한 해외 선적(도착 완료 표로 간다). coa: 원본을 여는 COA 시트 이름 목록. */
+  if (body.arrived !== undefined) cur.arrived = body.arrived === true;
+  if (body.coa !== undefined) {
+    const sheets = (Array.isArray(body.coa) ? body.coa : String(body.coa ?? "").split(","))
+      .map(x => String(x ?? "").trim()).filter(Boolean);
+    if (sheets.length > 20 || sheets.some(x => !/^[A-Za-z0-9_\-]{3,80}$/.test(x))) return { error: "coa must be sheet names" };
+    cur.coa = sheets;
   }
   /* traqo: Traqo 연동 opt-in 스위치(선적별, 기본 꺼짐). 3차 지시서.
      true/false, 문자열 "true"/"false"/"1"/"0"/"yes"/"no" 를 받아 boolean 으로 저장한다.
@@ -3162,6 +3171,11 @@ export default {
           kind: String((e && e.kind) || "").slice(0, 16), description: String((e && e.description) || "").slice(0, 80),
           locode: String((e && e.locode) || "").slice(0, 8), isActual: !!(e && e.isActual) }))
       };
+      /* 폰 tracker 의 선박 위치(한국 노선 지도용). 숫자가 아니면 저장하지 않는다 */
+      const a = r.ais;
+      if (a && Number.isFinite(a.lat) && Number.isFinite(a.lon) && Math.abs(a.lat) <= 90 && Math.abs(a.lon) <= 180) {
+        store.containers[c].ais = { lat: a.lat, lon: a.lon, at: String(a.at || "").slice(0, 30), precision: String(a.precision || "").slice(0, 20) };
+      }
       n++;
     }
     store.updatedAt = new Date().toISOString();

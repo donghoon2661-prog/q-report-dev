@@ -27,7 +27,9 @@
 
 /* 호주 그룹 — USA 표/비고 아래 간격 */
 #au-map,
-#au-list {
+#au-list,
+#kr-map,
+#kr-list {
   margin: 14px 0 6px;
 }
 

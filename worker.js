@@ -2410,7 +2410,7 @@ async function pollAIS(env, secs = 90) {
 /* ── 선사 일정 수동 입력 (KV ais:plans) ───────────────────────────────
    AIS에는 부킹·선사 일정이 없어서, 선사 사이트에서 확인한 계획 일정을 MBL별로 사람이 입력한다.
    plans[mbl] = { mbl, container, booking, vessel, voyage, imo, mmsi, pol, pod, etd, etb, eta, podTerminal, source, note, po, scheduleFrom, cntrQty, traqo, updated_at } */
-const AIS_PLAN_FIELDS = ["container", "booking", "carrier", "vessel", "voyage", "imo", "mmsi", "pol", "pod", "etd", "etb", "eta", "podTerminal", "source", "note"];
+const AIS_PLAN_FIELDS = ["container", "booking", "carrier", "vessel", "voyage", "imo", "mmsi", "pol", "pod", "etd", "etb", "eta", "planEtd", "planEta", "podTerminal", "source", "note"];
 
 /* scheduleFrom 으로 연결된 선적의 일정을 따라온 선적에 채워 넣는다(순수 함수, 입력을 바꾸지 않는다).
    대상에 값이 있는 필드만 덮어쓰고, 대상이 사라졌거나 형식이 잘못된 참조(고아)는 조용히 무시한다. */
@@ -2471,7 +2471,7 @@ async function saveAisPlan(env, body) {
   for (const f of AIS_PLAN_FIELDS) {
     if (body[f] === undefined) continue;
     const v = String(body[f] ?? "").trim().slice(0, 120);
-    if ((f === "etd" || f === "eta" || f === "etb") && v && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(v)) return { error: f + " must be YYYY-MM-DD or YYYY-MM-DDTHH:MM" };
+    if ((f === "etd" || f === "eta" || f === "etb" || f === "planEtd" || f === "planEta") && v && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(v)) return { error: f + " must be YYYY-MM-DD or YYYY-MM-DDTHH:MM" };
     if ((f === "imo" || f === "mmsi") && v && !/^\d{7,9}$/.test(v)) return { error: f + " must be digits" };
     if (f === "booking") {
       const b = v.toUpperCase();

@@ -1100,6 +1100,7 @@
     showAuDetail: showAuDetail,
     refresh: refresh,
     getPlans: getPlans,
+    openCoaOriginal: openCoaOriginal,
     init: init
   };
 });

@@ -641,7 +641,7 @@ html[data-theme="light"] #qview td.near{background:rgba(154,107,18,.08)}
 
 /* HISTORY 탭: 월별 요약(왼쪽 표 + 오른쪽 차트) */
 #hist-summary{display:grid;grid-template-columns:1fr 1.3fr;gap:16px;margin-top:18px}
-@media(max-width:760px){#hist-summary{grid-template-columns:1fr}}
+@media(max-width:760px){#hist-summary{grid-template-columns:minmax(0,1fr)}#hist-stats-table{display:block;overflow-x:auto}#hist-chart-wrap{min-width:0}#hist-detail{overflow-x:auto}}
 #hist-stats-table{width:100%;border-collapse:collapse;border:1px solid var(--line);background:var(--hull);height:fit-content}
 #hist-stats-table th{font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.12em;color:var(--fog);
   text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-weight:400}

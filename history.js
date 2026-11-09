@@ -54,7 +54,64 @@ function histMonthLabel(ym){
   return { m:names[parseInt(mo,10)-1]||mo, y };
 }
 
+/* ---------- 국가 필터 (2026-11-09) ----------
+   미국: /delayhistory 기록. 한국: /ais 의 도착 등록 선적(plan.arrived).
+   ALL 의 월 카드·상세는 합치고, 평균 지표는 미국 기준 그대로 둔다(운송 기간이 달라 섞지 않는다). */
+let histFilter = "all";
+
+function histEsc(v){
+  return String(v == null ? "" : v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function histDayDiff(a, b){
+  if(!a || !b) return null;
+  const d = Math.round((Date.parse(String(b).slice(0,10)+"T00:00:00Z") - Date.parse(String(a).slice(0,10)+"T00:00:00Z")) / 86400000);
+  return isFinite(d) ? d : null;
+}
+
+function krHistoryData(){
+  const plans = (window.CountryUI && typeof CountryUI.getPlans === "function") ? CountryUI.getPlans() : {};
+  const out = {};
+  Object.values(plans).forEach(p=>{
+    if(p.arrived !== true || String(p.pod||"").toUpperCase().indexOf("BUSAN") === -1) return;
+    const etd = String(p.etd||"").slice(0,10), eta = String(p.eta||"").slice(0,10);
+    if(!etd) return;
+    (out[etd.slice(0,7)] = out[etd.slice(0,7)] || []).push({
+      country: "KR",
+      vessel: histEsc([p.vessel, p.voyage].filter(Boolean).join(" ")),
+      booking: histEsc(p.booking || p.mbl),
+      pol: histEsc(p.pol), pod: histEsc(p.pod),
+      polDep: p.planEtd || "", polDepActualDate: etd,
+      planEta: p.planEta || "", actualEta: eta, podBerthingAt: eta,
+      delayDays: histDayDiff(p.planEta, eta),
+      coa: Array.isArray(p.coa) ? p.coa : []
+    });
+  });
+  return out;
+}
+
+/* 지금 필터의 월별 기록 */
+function histView(usa){
+  const kr = krHistoryData();
+  if(histFilter === "usa") return usa;
+  if(histFilter === "kr") return kr;
+  if(histFilter === "au") return {};
+  const all = {};
+  [usa, kr].forEach(src=>Object.keys(src).forEach(k=>{ all[k] = (all[k]||[]).concat(src[k]); }));
+  return all;
+}
+
+function renderHistoryBar(){
+  const bar = document.getElementById("hist-cbar");
+  if(!bar || !window.CountryGroups) return;
+  CountryGroups.renderBar(bar, {filter: histFilter}, key=>{
+    histFilter = key;
+    renderHistoryMonths().catch(e=>console.error("History",e));
+  });
+}
+
 async function renderHistoryMonths(){
+  renderHistoryBar();
   const wrap = document.getElementById("hist-months");
   document.getElementById("hist-detail").hidden = true;
   wrap.hidden = false;
@@ -63,6 +120,8 @@ async function renderHistoryMonths(){
   try{ data = await loadHistoryData(); }
   catch(e){ wrap.innerHTML = `<div class="hist-empty">Failed to load history — ${e.message||e}</div>`; return; }
 
+  const usaData = data;
+  data = histView(usaData);
   const keys = Object.keys(data).filter(k=>k!=="unknown").sort().reverse();
   if(!keys.length){
     wrap.innerHTML = `<div class="hist-empty">No completed shipments yet.</div>`;
@@ -70,7 +129,8 @@ async function renderHistoryMonths(){
     return;
   }
   document.getElementById("hist-summary").style.display = "";
-  renderHistorySummary(data, keys);
+  const statData = histFilter === "all" ? usaData : data;
+  renderHistorySummary(statData, Object.keys(statData).filter(k=>k!=="unknown").sort().reverse());
 
   wrap.innerHTML = keys.map(k=>{
     const {m,y} = histMonthLabel(k);
@@ -163,7 +223,7 @@ function renderHistorySummary(data, keys){
 }
 
 function renderHistoryDetail(monthKey){
-  const data = histCache || {};
+  const data = histView(histCache || {});
   const recs = (data[monthKey]||[]).slice().sort((a,b)=>(a.polDep||"").localeCompare(b.polDep||""));
   document.getElementById("hist-months").hidden = true;
   const detail = document.getElementById("hist-detail");
@@ -195,7 +255,7 @@ function renderHistoryDetail(monthKey){
     const transitTxt = transit !== null ? `${transit}d` : "—";
 
     return `<tr>
-      <td><span class="vname">${r.vessel||"—"}</span><span class="vbkg has-photo" data-bkg="${r.booking}" title="View photos">${r.booking}</span></td>
+      <td><span class="vname">${r.vessel||"—"}</span><span class="vbkg has-photo" data-bkg="${r.booking}" title="View photos">${r.booking}</span>${(r.coa||[]).map(c=>`<button type="button" class="pocoa" data-coa="${histEsc(c)}" title="Open COA original">COA</button>`).join("")}</td>
       <td class="route">${(r.pol||"").split(",")[0]||"—"} &rarr; ${(r.pod||"").split(",")[0]||"—"}</td>
       <td>${histShortDate(r.polDepActualDate || r.polDep)} <span class="plandate">(${histShortDate(r.polDep)})</span></td>
       <td class="dwell">${dwellTxt}</td>
@@ -208,8 +268,15 @@ function renderHistoryDetail(monthKey){
   tbody.querySelectorAll(".vbkg[data-bkg]").forEach(b=>
     b.addEventListener("click",()=>openHistPhotos(b.dataset.bkg)));
 
-  tbody.querySelectorAll(".hist-badge").forEach(b=>
-    b.addEventListener("click",()=>openHistPopup(recs[parseInt(b.dataset.idx,10)])));
+  /* 한국 건은 구간별 지연 기록이 없어 팝업을 열지 않는다 */
+  tbody.querySelectorAll(".hist-badge").forEach(b=>{
+    const rec = recs[parseInt(b.dataset.idx,10)];
+    if(rec.country) return;
+    b.addEventListener("click",()=>openHistPopup(rec));
+  });
+
+  tbody.querySelectorAll(".pocoa[data-coa]").forEach(b=>
+    b.addEventListener("click",()=>CountryUI.openCoaOriginal(b.dataset.coa)));
 
   document.getElementById("hist-back").onclick = ()=>{
     detail.hidden = true;

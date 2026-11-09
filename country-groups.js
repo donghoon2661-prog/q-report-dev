@@ -413,6 +413,11 @@
     return best;
   }
 
+  function newestIso(a, b) {
+    if (!a || !b) return a || b || null;
+    return Date.parse(b) > Date.parse(a) ? b : a;
+  }
+
   /* key: 'au'(기본) | 'kr' */
   function auRows(aisJson, key) {
     var lane = laneOf(key);
@@ -480,7 +485,7 @@
         etbText: etb ? fmtDay(etb) : null,
         etaText: eta ? fmtDay(eta) : null,
         etdSource: plan.source != null ? String(plan.source) : '',
-        lastDataIso: parseAisTime(pos && pos.at) || trackerFixIso(plan),
+        lastDataIso: newestIso(parseAisTime(pos && pos.at), trackerFixIso(plan)),
         note: note,
         warn: note !== '' /* 여러 출처의 일정이 다르다는 뜻 — 표에는 칩을 그리지 않는다 */
       });
@@ -797,9 +802,16 @@
   function arrivedBlock(rows, nowMs, key) {
     var list = Array.isArray(rows) ? rows : [];
     if (!list.length) return '';
-    return '<div class="cg-arrived-head">Arrived <small>' + list.length
-      + (list.length === 1 ? ' shipment' : ' shipments') + ' · COA original</small></div>'
-      + '<div class="cg-card">' + renderAuTable(list, nowMs, key) + '</div>';
+    var c = COUNTRIES[key] || {};
+    return '<section class="cg-root cg-group">'
+      + '<header class="cg-group-head">'
+      +   '<span class="cg-dot" style="background:' + safeColor(c.color) + '"></span>'
+      +   '<span class="cg-group-name">Arrived</span>'
+      +   '<span class="cg-group-route">' + esc(c.route || '') + '</span>'
+      +   '<span class="cg-count">· ' + list.length + (list.length === 1 ? ' shipment' : ' shipments') + '</span>'
+      + '</header>'
+      + '<div class="cg-card">' + renderAuTable(list, nowMs, key) + '</div>'
+      + '</section>';
   }
 
   /* 데이터가 한 번도 없던 국가의 빈 상태 안내 */
@@ -869,10 +881,13 @@
       t.events = (Array.isArray(own.events) ? own.events : [])
         .filter(function (e) { return !e || cs.indexOf(String(e.container || '').toUpperCase()) < 0; })
         .concat(evs);
+      var lane = laneOfPlan(plan);
+      var destLocode = lane ? lane.locode : null;
       var pick = function (code, actual, latest) {
         var best = null;
         evs.forEach(function (e) {
           if (e.code !== code || (actual && e.isActual !== true)) return;
+          if (code === 'ARRI' && destLocode && e.locode !== destLocode) return;   /* 환적항 도착은 도착이 아니다 */
           var x = Date.parse(e.date);
           if (isFinite(x) && (!best || (latest ? x > best.x : x < best.x))) best = { x: x, d: e.date };
         });
@@ -888,7 +903,6 @@
       plan.traqo = t;
       /* 표의 ETA 칸은 plan.eta(시드니 현지)를 쓰므로 폰 ETA 로 바꾼다. 일정이 자기 값이 되면 follows 표시는 뺀다. */
       if (trkEta) {
-        var lane = laneOfPlan(plan);
         var loc = fmtIsoLocal(trkEta, lane ? lane.locode : SYD_LOCODE);
         if (loc) plan.eta = loc;
       }

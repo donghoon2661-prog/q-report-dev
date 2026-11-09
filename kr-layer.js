@@ -49,7 +49,44 @@
     return best;
   }
 
-  /* /ais → 배(선박명+항차)마다 하나. 위치가 없거나 도착 등록된 건은 뺀다 */
+  /* 포트클랑 ETD(현지 UTC+8) 또는 실제 출항이 지났으면 true */
+  function isDeparted(m, nowMs) {
+    if (m && m.traqo && typeof m.traqo.atdUtc === 'string' && m.traqo.atdUtc) return true;
+    var t = Date.parse(String(m && m.etd || '').slice(0, 10) + 'T00:00:00+08:00');
+    return isFinite(t) && t <= (isNum(nowMs) ? nowMs : Date.now());
+  }
+
+  function ataOf(m) {
+    var a = m && m.traqo && m.traqo.ataUtc;
+    return typeof a === 'string' && isFinite(Date.parse(a)) ? a : null;
+  }
+
+  function nm(a, b) {
+    var k = Math.cos((a[0] + b[0]) / 2 * Math.PI / 180);
+    return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow((a[1] - b[1]) * k, 2)) * 60;
+  }
+
+  /* 항로 위 지점의 진행 비율(0~1, 거리 기준) */
+  function fracOf(pos) {
+    var total = 0, done = 0;
+    for (var i = 0; i < ROUTE.length - 1; i++) {
+      var d = nm(ROUTE[i], ROUTE[i + 1]);
+      if (i < pos.seg) done += d;
+      else if (i === pos.seg) done += d * pos.t;
+      total += d;
+    }
+    return total > 0 ? done / total : 0;
+  }
+
+  /* 진행도용 단계 — AisLayer.stageOf 와 같은 모양 { stage, frac } */
+  function stageOf(m, nowMs) {
+    if (ataOf(m) || (m && m.arrived === true)) return { stage: 'arrived', frac: 1 };
+    if (!isDeparted(m, nowMs)) return { stage: 'booked', frac: 0 };
+    if (!m || !isNum(m.lat) || !isNum(m.lng)) return { stage: 'transit', frac: 0 };
+    return { stage: 'transit', frac: fracOf(snap(m.lat, m.lng)) };
+  }
+
+  /* /ais → 배(선박명+항차)마다 하나. 출항 전, 위치 없음, 도착 등록된 건은 뺀다 */
   function ships(aisJson) {
     var plans = aisJson && aisJson.plans && typeof aisJson.plans === 'object' ? aisJson.plans : {};
     var byKey = {};
@@ -57,7 +94,7 @@
       var p = plans[k];
       if (!p || typeof p !== 'object' || p.arrived === true) return;
       if (String(p.pod == null ? '' : p.pod).toUpperCase().indexOf('BUSAN') === -1) return;
-      if (p.traqo && typeof p.traqo.ataUtc === 'string' && p.traqo.ataUtc) return;
+      if (!isDeparted(p)) return;
       var trk = p.tracker && typeof p.tracker === 'object' ? p.tracker : {};
       var fix = null;
       Object.keys(trk).forEach(function (c) {
@@ -65,6 +102,10 @@
         if (!a || !isNum(a.lat) || !isNum(a.lon)) return;
         if (!fix || String(a.at || '') > String(fix.at || '')) fix = a;
       });
+      if (ataOf(p)) {   /* 도착했으면 부산에 둔다 */
+        var end = ROUTE[ROUTE.length - 1];
+        fix = { lat: end[0], lon: end[1], at: ataOf(p) };
+      }
       if (!fix) return;
       var key = String(p.vessel || k) + '|' + String(p.voyage || '');
       var cur = byKey[key];
@@ -130,5 +171,5 @@
     return { update: update, setVisible: setVisible, destroy: destroy };
   }
 
-  return { ROUTE: ROUTE, snap: snap, ships: ships, traveled: traveled, create: create };
+  return { ROUTE: ROUTE, snap: snap, ships: ships, traveled: traveled, stageOf: stageOf, create: create };
 });

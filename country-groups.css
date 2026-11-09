@@ -344,7 +344,4 @@ html[data-cg-admin="1"] .cg-edit { display: inline-block; }
 .legend i.lg-au{background:#8AA4B5;box-shadow:0 0 0 1.5px #DCE8EF}
 .legend i.lg-au.lg-hollow{background:transparent}
 
-/* 해외 노선의 도착 완료 표 제목줄 */
-.cg-arrived-head { margin: 14px 0 8px; font-weight: 700; color: var(--paper, #DCE8EF); }
-.cg-arrived-head small { font-weight: 400; color: #8AA4B5; font-size: 12px; margin-left: 8px; }
 .cg-table .pocoa { margin: 0 0 0 6px; }

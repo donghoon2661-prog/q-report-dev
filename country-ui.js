@@ -230,16 +230,26 @@
   }
 
   /* 한국 영역 내용(DOM 접근 없음). 진행 중 표 + 도착 건 표. 0건이면 'kr' 필터일 때만 안내문 */
-  function krContentFor(filter, aisJson, nowMs) {
+  function krContentFor(filter, aisJson, nowMs, opts) {
     var CG = getCountryGroups();
     if (!visibilityFor(filter).kr || !CG) return '';
-    var rows = CG.auRows(aisJson, 'kr');
+    /* 출항일 순(실제 출항이 있으면 그 날짜) */
+    function etdKey(r) { return String((r.traqo && r.traqo.atdUtc) || r.etd || '9999').slice(0, 10) + '|' + r.booking; }
+    var rows = CG.auRows(aisJson, 'kr').sort(function (a, b) {
+      return etdKey(a) < etdKey(b) ? -1 : (etdKey(a) > etdKey(b) ? 1 : 0);
+    });
     if (!rows.length) return filter === 'kr' ? CG.renderEmpty('kr') : '';
     var live = rows.filter(function (r) { return !r.arrived; });
     var done = rows.filter(function (r) { return r.arrived; });
     /* 진행 중 건이 없어도 제목줄은 남기고, 도착 건은 그 아래에 붙인다 */
+    var AL = getAisLayer(), KL = getKrLayer(), top = '';
+    if (opts && opts.overview && AL && KL && live.length) {
+      top = overviewHtml(AL.buildModels(aisJson).filter(function (m) {
+        return !m.arrived && String(m.pod || '').toUpperCase().indexOf('BUSAN') !== -1;
+      }), nowMs, { stageOf: KL.stageOf, pod: 'BUSAN', short: 'BSN', at: 'At Busan' });
+    }
     return CG.renderGroup('kr', live.length,
-      live.length ? CG.renderAuTable(live, nowMs, 'kr') : '<div class="cg-empty">No shipments on the water.</div>', '')
+      live.length ? CG.renderAuTable(live, nowMs, 'kr') : '<div class="cg-empty">No shipments on the water.</div>', top)
       + CG.arrivedBlock(done, nowMs, 'kr');
   }
 
@@ -304,15 +314,19 @@
     } catch (e) { return ''; }
   }
 
-  function overviewHtml(models, nowMs) {
+  /* opts(생략하면 시드니): { stageOf, pod:'BUSAN', short:'BSN', at:'At Busan' } */
+  function overviewHtml(models, nowMs, opts) {
     var AL = getAisLayer();
     if (!AL || typeof AL.stageOf !== 'function') return '';
     var list = Array.isArray(models) ? models : [];
+    var o = opts || {};
+    var stageFn = o.stageOf || AL.stageOf;
+    var podName = o.pod || 'SYDNEY';
 
     var booked = [], marks0 = [];
     list.forEach(function (m) {
       m = m || {};
-      var st = AL.stageOf(m);
+      var st = stageFn(m, nowMs);
       if (st.stage === 'booked') { booked.push(m); return; } /* 선 위에 찍지 않는다 */
       if (st.stage === 'arrived') {
         marks0.push({ m: m, x: 100, cls: 's-berth', sub: 'BERTHED' });
@@ -377,19 +391,19 @@
         + '</div>'
       : '';
 
-    var sub = 'In transit ' + transit + ' · At Sydney ' + atSyd
+    var sub = 'In transit ' + transit + ' · ' + (o.at || 'At Sydney') + ' ' + atSyd
       + (booked.length ? ' · Booked ' + booked.length : '')
       + ' · of ' + list.length;
 
     return '<div class="cu-overview">'
-      + '<h2>ALL SHIPMENTS · PORT KLANG → SYDNEY</h2>'
+      + '<h2>ALL SHIPMENTS · PORT KLANG → ' + esc(podName) + '</h2>'
       + '<div class="sub">' + esc(sub) + '</div>'
       + bookedBox
       + '<div class="orail">'
       +   '<div class="base"></div>'
       +   '<div class="cap" style="left:0"></div><div class="cap-lb l" style="left:0">PORT KLANG</div>'
-      +   '<div class="cap" style="left:100%"></div><div class="cap-lb r" style="left:100%"><span class="full">SYDNEY</span><span class="short">SYD</span></div>'
-      +   viaTick(AL)
+      +   '<div class="cap" style="left:100%"></div><div class="cap-lb r" style="left:100%"><span class="full">' + esc(podName) + '</span><span class="short">' + esc(o.short || 'SYD') + '</span></div>'
+      +   (o.pod ? '' : viaTick(AL))
       +   marks
       + '</div></div>';
   }
@@ -624,7 +638,7 @@
     var krA = byId('kr-map');
     var krB = byId('kr-list');
     if (krA) krA.innerHTML = krContentFor(state.filterMap, ais, now);
-    if (krB) krB.innerHTML = krContentFor(state.filterList, ais, now);
+    if (krB) krB.innerHTML = krContentFor(state.filterList, ais, now, { overview: true });
     renderAuNotes();
     renderAuLane();
     /* [11A] 호주 영역을 다시 그릴 때마다 관리자 버튼 상태를 동기화한다.

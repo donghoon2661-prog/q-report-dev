@@ -92,6 +92,8 @@
     sydney: { name: 'SYDNEY',     latlng: [-33.86, 151.21] }
   };
 
+  var BUSAN_LATLNG = [35.18, 129.076];
+
   /* 항로/선박 마커 색: 3차 지시서 — 두 테마 공통으로 눈에 덜 띄는 톤 */
   var LINE_COLOR = '#EAF2F6';    /* 항로 폴리라인 — 다크(호주 = 흰색 점선) */
   var LINE_COLOR_LIGHT = '#5A7183'; /* 라이트 테마 슬레이트 */
@@ -243,6 +245,37 @@
     return t;
   }
 
+  /* 폰 tracker 가 올린 선박 위치 중 가장 최근 값 { lat, lon, iso } — 없으면 null */
+  function trackerFixOf(plan) {
+    var trk = plan && plan.tracker && typeof plan.tracker === 'object' ? plan.tracker : {};
+    var best = null;
+    Object.keys(trk).forEach(function (c) {
+      var a = trk[c] && trk[c].ais;
+      if (!a || !isNum(a.lat) || !isNum(a.lon) || !isFinite(Date.parse(a.at))) return;
+      if (!best || Date.parse(a.at) > Date.parse(best.iso)) best = { lat: a.lat, lon: a.lon, iso: a.at };
+    });
+    return best;
+  }
+
+  /* 도착항 좌표(노선을 모르면 null) */
+  function podLatLng(plan) {
+    var pod = String(plan && plan.pod != null ? plan.pod : '').toUpperCase();
+    if (pod.indexOf('SYDNEY') !== -1) return PORTS.sydney.latlng;
+    if (pod.indexOf('BUSAN') !== -1) return BUSAN_LATLNG;
+    return null;
+  }
+
+  /* 지도·진행도에 쓸 위치. AIS 가 끊겨도 실제 도착·최신 위치를 따른다.
+     도착(ATA 또는 도착 등록) → 도착항 / 폰 tracker 가 AIS 보다 최근 → tracker / 그 외 null(AIS 그대로) */
+  function placeOf(plan, tq, aisIso) {
+    var ata = tq && typeof tq.ataUtc === 'string' && isFinite(Date.parse(tq.ataUtc)) ? tq.ataUtc : null;
+    var dest = podLatLng(plan);
+    if (dest && (ata || plan.arrived === true)) return { lat: dest[0], lng: dest[1], iso: ata || aisIso, source: 'arrived' };
+    var fix = trackerFixOf(plan);
+    if (fix && (!aisIso || Date.parse(fix.iso) > Date.parse(aisIso))) return { lat: fix.lat, lng: fix.lon, iso: fix.iso, source: 'tracker' };
+    return null;
+  }
+
   function buildModels(aisJson) {
     var out = [];
     if (!aisJson || typeof aisJson !== 'object') return out;
@@ -257,15 +290,19 @@
       var pos = (v && v.pos) ? v.pos : null;
       var hasPos = !!pos && isNum(pos.lat) && isNum(pos.lon);
       var stat = (v && v.stat) ? v.stat : null;
+      var tq = traqoOf(plan);
+      var aisIso = parseAisTime(pos && pos.at);
+      var place = placeOf(plan, tq, aisIso);   /* 있으면 AIS 값(위치·속도·거리)을 쓰지 않는다 */
 
       out.push({
+        arrived: plan.arrived === true,
         mmsi: mmsi,
         name: plan.vessel != null ? String(plan.vessel) : (v && v.name != null ? String(v.name) : ''),
         voyage: plan.voyage != null ? String(plan.voyage) : '',
         mbl: plan.mbl != null ? String(plan.mbl) : String(mbl),
         container: plan.container != null ? String(plan.container) : '',
         cntrQty: cntrQtyOf(plan),
-        traqo: traqoOf(plan),
+        traqo: tq,
         booking: bookingOf(plan, String(mbl)),
         po: poOf(plan),
         scheduleInherited: plan.scheduleInherited === true,
@@ -278,14 +315,14 @@
         podTerminal: plan.podTerminal != null ? String(plan.podTerminal) : '',
         source: plan.source != null ? String(plan.source) : '',
         note: plan.note != null ? String(plan.note) : '',
-        lastDataIso: parseAisTime(pos && pos.at),
-        posSource: pos && pos.source != null ? String(pos.source) : null,
-        lat: hasPos ? pos.lat : null,
-        lng: hasPos ? pos.lon : null,
-        sog: pos && isNum(pos.sog) ? pos.sog : null,
-        cog: pos && isNum(pos.cog) ? pos.cog : null,
-        distPklNm: v && isNum(v.distPklNm) ? v.distPklNm : null,
-        destination: stat && stat.destination != null ? String(stat.destination) : null
+        lastDataIso: place ? place.iso : aisIso,
+        posSource: place ? place.source : (pos && pos.source != null ? String(pos.source) : null),
+        lat: place ? place.lat : (hasPos ? pos.lat : null),
+        lng: place ? place.lng : (hasPos ? pos.lon : null),
+        sog: !place && pos && isNum(pos.sog) ? pos.sog : null,
+        cog: !place && pos && isNum(pos.cog) ? pos.cog : null,
+        distPklNm: !place && v && isNum(v.distPklNm) ? v.distPklNm : null,
+        destination: !place && stat && stat.destination != null ? String(stat.destination) : null
       });
     });
     return out;

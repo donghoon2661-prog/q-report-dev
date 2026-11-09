@@ -350,14 +350,7 @@ function initMap(data){
           .bindTooltip(s.names[k] || ("P"+(k+1)),{className:'vsl-tip',direction:'top'}).addTo(usaGroup);
       });
     } else if (svcRoute) {
-      /* PS3/PS5 수동 항로 (dense route 미도입 fallback) */
-      const lineColor = det.inferred ? '#B8860B' : cssVar('--buoy', '#FF6B35');
-      const sk = 'svc|' + (det.svc || '') + '|' + (det.inferred ? 1 : 0);
-      if (!routeDrawn[sk]) L.polyline(svcRoute, {
-        color: lineColor, weight: 1.5,
-        dashArray: '4,4', opacity: 0.9
-      }).addTo(usaGroup);
-      routeDrawn[sk] = 1;
+      /* HMM 실제 항로가 아직 없는 선적: 수동 대체 항로는 그리지 않고 기항지만 찍는다(11-09 대장님) */
       const r = portRoute.map(wrap);
       r.forEach((p,k)=>{
         const key = p[0].toFixed(2)+","+p[1].toFixed(2);

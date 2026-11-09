@@ -409,6 +409,7 @@
 
       rows.push({
         mmsi: mmsi == null ? '' : mmsi,
+        carrier: plan.carrier != null ? String(plan.carrier).trim().toUpperCase() : '',
         vessel: plan.vessel != null ? String(plan.vessel) : '',
         voyage: plan.voyage != null ? String(plan.voyage) : '',
         mbl: plan.mbl != null ? String(plan.mbl) : String(mbl),
@@ -458,6 +459,7 @@
       + '<th>GATE IN / ETD · PKG</th>'
       + '<th>SYDNEY ETB / DEST ETA</th>'
       + '<th>SYDNEY GATE OUT / RETURN</th>'
+      + '<th>CARRIER</th>'
       + '</tr>';
 
     var body = list.map(function (r) {
@@ -552,6 +554,7 @@
         + '<td data-l="GATE IN / ETD · PKG" style="white-space:nowrap">' + inLine + etdLine + '</td>'
         + '<td data-l="SYDNEY ETB / ETA">' + etbLine + etaLine + '</td>'
         + '<td data-l="SYDNEY OUT / RTN">' + outLine + retCell + '</td>'
+        + '<td data-l="CARRIER"><span class="dt">' + esc(r.carrier || '—') + '</span></td>'
         + '</tr>';
     }).join('');
 

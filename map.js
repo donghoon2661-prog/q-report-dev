@@ -322,7 +322,21 @@ function initMap(data){
 
   const portSeen = {};
   const routeDrawn = {};   /* 같은 항로선을 선적마다 겹쳐 그리면 점선이 실선처럼 보인다 — 항로당 한 번만 */
+  /* 미국 항로선은 하나만 그린다(11-09 대장님): 바다 위에서 배가 가장 많이 모인 지점의 항로 */
+  const routeKey = s => s.route.length + '|' + s.route[0] + '|' + s.route[s.route.length - 1];
+  const seaCount = {};
+  let keepRoute = null, keepN = 0;
   data.shipments.forEach(s=>{
+    if (!Array.isArray(s.route) || s.route.length <= 10) return;
+    const here = locate(s);
+    if (!here || here.atPort) return;
+    const at = here.pos[0].toFixed(1) + ',' + here.pos[1].toFixed(1);
+    seaCount[at] = (seaCount[at] || 0) + 1;
+    if (seaCount[at] > keepN) { keepN = seaCount[at]; keepRoute = routeKey(s); }
+  });
+
+  data.shipments.forEach(s=>{
+    if (!Array.isArray(s.route) || s.route.length <= 10 || routeKey(s) !== keepRoute) return;
     const det = detectService(s);
     /* dense route: marnet routing 완료 상태 (route 좌표가 기항지보다 훨씬 많음) */
     const hasDense = Array.isArray(s.route) && s.route.length > 10;

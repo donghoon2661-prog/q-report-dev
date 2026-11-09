@@ -240,7 +240,6 @@
     });
     if (!rows.length) return filter === 'kr' ? CG.renderEmpty('kr') : '';
     var live = rows.filter(function (r) { return !r.arrived; });
-    var done = rows.filter(function (r) { return r.arrived; });
     /* 진행 중 건이 없어도 제목줄은 남기고, 도착 건은 그 아래에 붙인다 */
     var AL = getAisLayer(), KL = getKrLayer(), top = '';
     if (opts && opts.overview && AL && KL && live.length) {
@@ -249,8 +248,7 @@
       }), nowMs, { stageOf: KL.stageOf, pod: 'BUSAN', short: 'BSN', at: 'At Busan' });
     }
     return CG.renderGroup('kr', live.length,
-      live.length ? CG.renderAuTable(live, nowMs, 'kr') : '<div class="cg-empty">No shipments on the water.</div>', top)
-      + CG.arrivedBlock(done, nowMs, 'kr');
+      live.length ? CG.renderAuTable(live, nowMs, 'kr') : '<div class="cg-empty">No shipments on the water.</div>', top);
   }
 
   /* [2차 수정·버그 1] 필터별 호주 영역 내용을 만드는 순수 함수(DOM 접근 없음).
